@@ -220,4 +220,3 @@ def identify_from_size(size,colour):
         yellow_areas = [abs(x-size) for x in yellow_areas]
         index = yellow_areas.index(min(yellow_areas))
         return coins[index]
-        
