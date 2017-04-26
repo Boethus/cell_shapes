@@ -46,7 +46,8 @@ total_buffer= np.zeros((height-30,width,length),dtype=np.uint8)
 for i in range(length):
     #Get frame
     ret, frame = cap.read()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = frame[:,:,0]
     gray=gray[30:,:]
     #Definition of the different quantities used for temporal analysis
     if i==0:
@@ -83,7 +84,7 @@ for i in range(length):
         
 cap.release()
 filename = 'itoh-cell-migration-02.mov'
-df.showSegmentation_color(filename,total_buffer,save=True,savename='video1/')
+df.showSegmentation_color(filename,total_buffer,save=True,savename='video1')
 
 """2nd pass"""
 print "2nd pass"

@@ -10,6 +10,7 @@ import cv2
 import scipy.ndimage as ndi
 import skimage
 import hungarian
+import skimage.feature
 from sklearn.neighbors import KNeighborsClassifier
 a=10
 
@@ -21,7 +22,8 @@ def filter_by_size(img_segm):
         numbers[i-1] = np.sum(img_segm==i)
         
     indexes = np.arange(1,np.max(img_segm))
-    indexes = indexes[numbers>np.mean(numbers)] #Deletes the 1-pixel elements
+    #indexes = indexes[numbers>np.mean(numbers)] #Deletes the 1-pixel elements
+    indexes = indexes[numbers>1000] #Deletes the 1-pixel elements
     
     segm_filtered = np.zeros(img_segm.shape)
     j=1

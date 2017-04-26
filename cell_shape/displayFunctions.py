@@ -80,9 +80,13 @@ def drawCentroids2(image, img_segm,colors):
         cv2.circle(image, (int(ys[i]),int(xs[i])), 10, colors[elts[i]], -1)
         
         
-def drawContours(img,thresh):
+def drawContours(img,thresh,color=0):
     thresh = thresh.astype(np.uint8)
     thresh,contour,hierarchy = cv2.findContours(thresh,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_SIMPLE)
     image = np.copy(img)
-    cv2.drawContours(image, contour, -1, (0,255,0), 3)
+    #Color changes the color of what is displayed
+    if color:
+        cv2.drawContours(image, contour, -1, (0,255,0), 3)
+    else:
+        cv2.drawContours(image, contour, -1, (255,0,0), 3)
     return image
