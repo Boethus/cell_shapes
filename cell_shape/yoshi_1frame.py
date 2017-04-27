@@ -12,14 +12,13 @@ import scipy.ndimage as ndi
 import displayFunctions as df
 import matplotlib.pyplot as plt
 
-filename = os.path.join("data",'itoh-cell-migration-02.mov')
+filename = os.path.join("data","itoh-cell-migration-02.mov")
 
 cap = cv2.VideoCapture(filename)
 
 nframe = 15
 
 save=True
-filename='video1/'
 saveLabels = 0
 for i in range(90):
     #Get frame

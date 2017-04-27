@@ -23,7 +23,7 @@ def filter_by_size(img_segm):
         
     indexes = np.arange(1,np.max(img_segm))
     #indexes = indexes[numbers>np.mean(numbers)] #Deletes the 1-pixel elements
-    indexes = indexes[numbers>1000] #Deletes the 1-pixel elements
+    indexes = indexes[numbers>500] #Deletes the 1-pixel elements
     
     segm_filtered = np.zeros(img_segm.shape)
     j=1
