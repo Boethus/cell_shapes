@@ -1,0 +1,6 @@
+Segmentation seems to work fine with canny edge detection :
+Gaussian sigma: 2
+Absolute threshold 0.1
+threshold adjustment factor 1.0
+
+Problem inYoshi video: some frames are blurred. Some cells are moving in 3dimensions(?) so edge detection performs unequally
