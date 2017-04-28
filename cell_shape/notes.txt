@@ -4,3 +4,7 @@ Absolute threshold 0.1
 threshold adjustment factor 1.0
 
 Problem inYoshi video: some frames are blurred. Some cells are moving in 3dimensions(?) so edge detection performs unequally
+
+Wavelets: questions
+-Is it necessary to use the HF channels for reconstruction (if we want to denoise?)
+-Histogram equalization?
