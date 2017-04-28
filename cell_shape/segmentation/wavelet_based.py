@@ -24,20 +24,27 @@ def si(img):
     plt.figure()
     plt.imshow(img)
     
-im = openFrame(11)
+im = openFrame(9)
 
 cA, (cH, cV, cD) = pywt.dwt2(im,"haar")
-for i in range(0):
+for i in range(1):
     cA, (cH, cV, cD) = pywt.dwt2(cA,"haar")
-    
+si(cA)
 im3 = skimage.filters.sobel(cA)
+#im3 = skimage.feature.canny(cA)   Shitty
 
 im3, (cHs, cVs, cDs) = pywt.dwt2(im3,"haar")
-im3 = skimage.filters.gaussian_filter(im3,2)
+#im3 = skimage.filters.gaussian(im3,2)
 si(im3)
 cA=im3
 plt.figure()
 plt.subplot(122)
 plt.imshow(cA>skimage.filters.threshold_otsu(cA))
+plt.subplot(121)
+plt.imshow(cA)
+
+plt.figure()
+plt.subplot(122)
+plt.imshow(im)
 plt.subplot(121)
 plt.imshow(cA)
