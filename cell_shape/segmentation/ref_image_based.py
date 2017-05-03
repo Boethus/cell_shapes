@@ -81,18 +81,32 @@ for i in range(1,6):
 
 #A trous method
 im = im[:-2,:]  #To change max level
-#im = skimage.filters.sobel(im)
+im = skimage.filters.sobel(im)
 
 print pywt.swt_max_level(im.shape[1]),pywt.swt_max_level(im.shape[0])
-coeffs_trous = pywt.swt2(im,wlt,5,start_level=0)
+coeffs_trous = pywt.swt2(im,wlt,3,start_level=0)
 
 total = np.ones(im.shape)
-
+#Add Gaussian blur
 for elts in coeffs_trous:
     cA,(cH,cV,cD) = elts
     tata = np.sqrt(cH**2+cV**2)
     var = m.getNoiseVar(cA)
-    #cA=m.abe(cA,var)
-    m.si(cA)
+    m.si(cA,"unfiltered")
+    #plt.figure()
+    #plt.hist(cA.reshape(-1),bins=200)
+    #cA=np.power(m.abe(cA,var),0.5)
+    cA= np.arctan(cA/np.max(cA)*np.pi*1.5)
+    #m.si(tata)
+    m.si(cA,"filtered")
     total*=cA
 m.si(total)
+
+from skimage.filters import try_all_threshold
+try_all_threshold(total)
+
+save = False
+if save:
+    total = total/np.max(total)*255
+    total = total.astype(np.uint8)
+    cv2.imwrite("stack.tif",total)
