@@ -69,10 +69,10 @@ def abe(img,variance):
     out[img==0]=0
     return out
 
-def getNoiseVar(img):
+def getNoiseVar(img,fraction=0.95):
     """Gets the nth% of lower intensity pixels in an image correspondin to the noise
     n is determined empirically."""
-    last_val = np.percentile(img,95)
+    last_val = np.percentile(img,fraction)
     #si(img<last_val,title="Pixel values considered as noise")
     return np.var(img[img<last_val])
 
@@ -169,4 +169,17 @@ def segmentation(total):
     mask,nr = ndi.label(mask)
     mask = filter_by_size(mask,500)
     return mask.astype(np.uint8)
+
+def wavelet_denoising2(im,wlt='sym2',lvl=5,fraction=0.76):
+    coeffs_trous = pywt.swt2(im,wlt,lvl,start_level=0)
+    
+    total = np.ones(im.shape)
+    #Add Gaussian blur
+    for elts in coeffs_trous:
+        cA,(cH,cV,cD) = elts
+        var = getNoiseVar(cA,fraction)        
+        cA = abe(cA,var)
+        #m.si(tata)
+        total*=cA
+    return total
 
