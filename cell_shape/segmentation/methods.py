@@ -11,13 +11,11 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import skimage.feature
 import skimage.filters
-from sklearn.preprocessing import normalize
 import cv2
-import isingmrf_spmat as mrf
 import scipy.ndimage as ndi
 import pywt
 
-plt.close("all")
+#plt.close("all")
 
 def openFrame(number):
     name = os.path.join("..","data","yoshi_mov_2",str(number)+".tif")
@@ -30,6 +28,17 @@ def si(img,title=None):
     plt.imshow(img,cmap='gray')
     if title:
         plt.title(title)
+        
+def si2(im1,im2,title1=None,title2=None):
+    plt.figure()
+    plt.subplot(121)
+    plt.imshow(im1)
+    if title1:
+        plt.title(title1)
+    plt.subplot(122)
+    plt.imshow(im2)
+    if title2:
+        plt.title(title2)
 
 def displayWlt(wlt):
     cA, (cH, cV, cD)=wlt
@@ -91,3 +100,73 @@ def fillHoles(img):
             cv2.drawContours(img,contour,i,255,-1)
             i+=1
     return img
+
+def modulusMaximum(amplitude,angle):
+    """Unused method which computes for each pixel if it is the maximum of its neighbors
+    along the axis defined by angle"""
+    angle = np.mod(angle+np.pi,np.pi)/np.pi  #The sign does not matter anyway, goes between 0 and 1
+    
+    #Do 4 cases: angle <0.25,0.5,0.75,>0.75
+    results_plus = np.zeros(amplitude.shape,dtype = np.uint8)
+    results_minus = np.zeros(amplitude.shape,dtype = np.uint8)
+    
+    ampl_pad = np.pad(amplitude,1,'constant')
+    
+    #Case angle is between 0 and 45deg, ie angle is between 0 and 0.25
+    print "max angle",np.max(angle)
+    tmp = amplitude>ampl_pad[1:-1,2:]
+    results_plus[angle<0.25] = tmp[angle<0.25]
+    tmp = amplitude>ampl_pad[1:-1,:-2]
+    results_minus[angle<0.25] = tmp[angle<0.25]
+    
+    #Case angle between 0.25 and 0.5
+    tmp = amplitude>ampl_pad[:-2,2:]
+    results_plus[np.logical_and(angle>=0.25,angle<0.5)] = tmp[np.logical_and(angle>=0.25,angle<0.5)]
+    tmp = amplitude>ampl_pad[2:,:-2]
+    results_minus[np.logical_and(angle>=0.25,angle<0.5)] = tmp[np.logical_and(angle>=0.25,angle<0.5)]
+       
+    #Case angle between 0.5 and 0.75
+    tmp = amplitude>ampl_pad[2:,1:-1]
+    results_plus[np.logical_and(angle>=0.5,angle<0.75)] = tmp[np.logical_and(angle>=0.5,angle<0.75)]
+    tmp = amplitude>ampl_pad[:-2,1:-1]
+    results_minus[np.logical_and(angle>=0.5,angle<0.75)] = tmp[np.logical_and(angle>=0.5,angle<0.75)]
+    
+    #Case angle >0.75
+    tmp = amplitude>ampl_pad[:-2,:-2]
+    results_plus[angle>=0.75] = tmp[angle>=0.75]
+    tmp = amplitude>ampl_pad[2:,2:]
+    results_minus[angle>=0.75] = tmp[angle>=0.75]
+    
+    return np.logical_and(results_plus,results_minus)
+
+def saveFrame(name,total):
+    total = total/np.max(total)*255
+    total = total.astype(np.uint8)
+    cv2.imwrite(name,total)
+
+def wavelet_denoising(im,wlt='sym2',lvl=5):
+    coeffs_trous = pywt.swt2(im,wlt,lvl,start_level=0)
+    
+    total = np.ones(im.shape)
+    #Add Gaussian blur
+    for elts in coeffs_trous:
+        cA,(cH,cV,cD) = elts
+        var = getNoiseVar(cA)        
+        cA = abe(cA,var)
+        cA= np.arctan(cA/np.max(cA)*np.pi*3)
+        #m.si(tata)
+        total*=cA
+    return total
+
+def segmentation(total):
+    t = skimage.filters.threshold_li(total)
+    mask = (total>t).astype(np.uint8)
+    #mask = cv2.dilate(mask,np.ones((4,4)),iterations = 1)
+    kernel = np.ones((5,5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    #m.fillHoles(mask)
+    si(mask)
+    mask,nr = ndi.label(mask)
+    mask = filter_by_size(mask,500)
+    return mask.astype(np.uint8)
+
