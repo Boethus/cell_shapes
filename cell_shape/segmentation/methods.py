@@ -83,3 +83,11 @@ def filter_by_size(img_segm,mini_nb_pix):
         segm_filtered[img_segm==i] = j
         j+=1
     return segm_filtered
+
+def fillHoles(img):
+    out,contour,hierarchy = cv2.findContours(img,cv2.RETR_CCOMP,cv2.CHAIN_APPROX_NONE)
+    i=0
+    for cnt in contour:
+            cv2.drawContours(img,contour,i,255,-1)
+            i+=1
+    return img

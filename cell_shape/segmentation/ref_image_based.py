@@ -7,15 +7,11 @@ Created on Wed May 03 11:11:06 2017
 
 import methods as m
 
-import os
 import numpy as np
-from PIL import Image
 import matplotlib.pyplot as plt
 import skimage.feature
 import skimage.filters
-from sklearn.preprocessing import normalize
 import cv2
-import isingmrf_spmat as mrf
 import scipy.ndimage as ndi
 import pywt
 
@@ -70,7 +66,12 @@ def wavelet_edge(im,wlt,lvl=2):
     amplitude[maxMod] = 0
     return amplitude
 
-im = m.openFrame(10)
+def saveFrame(name,total):
+    total = total/np.max(total)*255
+    total = total.astype(np.uint8)
+    cv2.imwrite(name,total)
+    
+im = m.openFrame(67)
 
 wlt = pywt.Wavelet("rbio3.1")
 #wlt = pywt.Wavelet("haar")
@@ -84,7 +85,7 @@ im = im[:-2,:]  #To change max level
 im = skimage.filters.sobel(im)
 
 print pywt.swt_max_level(im.shape[1]),pywt.swt_max_level(im.shape[0])
-coeffs_trous = pywt.swt2(im,wlt,3,start_level=0)
+coeffs_trous = pywt.swt2(im,wlt,2,start_level=0)
 
 total = np.ones(im.shape)
 #Add Gaussian blur
@@ -92,18 +93,41 @@ for elts in coeffs_trous:
     cA,(cH,cV,cD) = elts
     tata = np.sqrt(cH**2+cV**2)
     var = m.getNoiseVar(cA)
-    m.si(cA,"unfiltered")
+    #m.si(cA,"unfiltered")
     #plt.figure()
     #plt.hist(cA.reshape(-1),bins=200)
     #cA=np.power(m.abe(cA,var),0.5)
+    #m.si(cA,"filtered")
+    for i in range(1):
+        cA = m.abe(cA,var)
     cA= np.arctan(cA/np.max(cA)*np.pi*1.5)
     #m.si(tata)
-    m.si(cA,"filtered")
     total*=cA
 m.si(total)
-
 from skimage.filters import try_all_threshold
 try_all_threshold(total)
+
+def segmentation(total):
+    t = skimage.filters.threshold_li(total)
+    mask = (total>t).astype(np.uint8)
+    #mask = cv2.dilate(mask,np.ones((4,4)),iterations = 1)
+    kernel = np.ones((7,7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    #m.fillHoles(mask)
+    m.si(mask)
+    mask,nr = ndi.label(mask)
+    mask = m.filter_by_size(mask,500)
+    return mask.astype(np.uint8)
+
+img_f = segmentation(skimage.filters.gaussian(total,0.01))
+img_g = segmentation(skimage.filters.gaussian(total,0.5))
+
+plt.figure()
+plt.subplot(121)
+plt.imshow(img_f)
+plt.subplot(122)
+plt.imshow(img_g)
+
 
 save = False
 if save:
