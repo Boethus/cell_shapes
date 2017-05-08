@@ -140,8 +140,9 @@ def modulusMaximum(amplitude,angle):
     return np.logical_and(results_plus,results_minus)
 
 def saveFrame(name,total):
-    total = total/np.max(total)*255
-    total = total.astype(np.uint8)
+    if total.dtype!='uint8':
+        total = total/np.max(total)*255
+        total = total.astype(np.uint8)
     cv2.imwrite(name,total)
 
 def wavelet_denoising(im,wlt='sym2',lvl=5):

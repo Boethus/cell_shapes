@@ -12,9 +12,7 @@ from PIL import Image
 import numpy as np
 import cv2
 import skimage.filters
-from skimage.morphology import watershed, disk
-from skimage.filters import rank
-import scipy.signal
+import scipy.ndimage as ndi
 """Attempt to remove gaussian spots using wavelets"""
 plt.close('all')
 
@@ -84,9 +82,6 @@ cl2 = wavelet_denoising2(cl2,lvl=3)
 cl3=cl2/np.max(cl2)*255
 
 cl3 = clahe.apply(cl3.astype(np.uint8))
-#cl2 = rank.median(cl2, disk(5))
-
-
 #Comparison between different methods
 path = os.path.join("..",'data','microglia','RFP1_denoised','filtered_Scene1Interval'+str(frameNum)+'_RFP.png')
 
@@ -106,32 +101,7 @@ plt.title("local histogram equalization")
 plt.subplot(224)
 plt.imshow(cl2)
 plt.title("local histogram equalization+ wavelet denoising")
-"""
-for i in range(2):
-    im=process(im)
-    im = im/np.max(im)
-    im*=255
-    im=im.astype(np.uint8)
-m.si(im)
-"""
-"""
-for i in range(1,10):
-    m.si(blobDet(img,i),"Blob sigma:"+str(i))"""
 
-"""
-gray = np.asarray(img)
-t = skimage.filters.threshold_local(gray,501)
-t = skimage.filters.threshold_otsu(gray)
-t = gray>t
-t=t.astype(np.uint8)*255
-m.si(t)
-
-kernel= np.ones((3,3),np.uint8)
-#eroded = cv2.morphologyEx(t,cv2.MORPH_OPEN,kernel, iterations = 2)
-eroded = cv2.erode(t,kernel,iterations = 4)
-m.si2(gray,eroded,"base image","erosion")
-
-"""
 def gaussian(size,sigma):
     """Generates a square gaussian mask with size*size pixels and std sigma"""
     a,b=np.ogrid[-size/2:size/2,-size/2:size/2]
@@ -156,9 +126,6 @@ def try_template_matching(img,threshold=0.8):
     template/=template.max()
     template*=255
     template = template.astype(np.uint8)
-    #cv2.imwrite("template.tif",template)
-    c= scipy.signal.convolve2d(cl2,template)
-    m.si(c,"Image convolved")
         
     #OpenCv template matching
     
@@ -176,7 +143,7 @@ def try_template_matching(img,threshold=0.8):
         res = cv2.matchTemplate(img,template,method)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
     
-        print res.dtype,res.max()
+        print meth,res.min(),res.max()
         if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
             loc = np.where( res <= (1-threshold)*np.max(res))
         else:
@@ -191,26 +158,113 @@ def try_template_matching(img,threshold=0.8):
         plt.figure()
         plt.subplot(121),plt.imshow(res,cmap = 'gray')
         plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
-        #plt.colorbar()
+        plt.colorbar()
         plt.subplot(122),plt.imshow(img,cmap = 'gray')
         plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
         plt.suptitle(meth)
     
         plt.show()
+import time
+"""
+t=time.time()
+try_template_matching(cl1)
+print "elapsed time: ", time.time()-t
+"""
 
-try_template_matching(cl2)
+def optimal_template_matching(img):
+    """Optimal template matching based on experimentation"""
+    method = 'cv2.TM_CCOEFF_NORMED'
+    size = 60
+    template = gaussian(size,25)
+    template/=template.max()
+    template*=255
+    template = template.astype(np.uint8)
+    
+    threshold = 0.9
+    w, h = template.shape[::-1]
+    
+    img2 = img.copy()
+    meth = eval(method)
 
-#Try ICA
-from sklearn import decomposition
-clf = decomposition.FastICA(n_components=2)
-centered = cl1-np.mean(cl1)
-centered = centered.astype(np.float)
-sh = centered.shape
-centered = centered.reshape(-1,1)
-clf.fit(centered)
-tr = clf.transform(centered)
+    # Apply template Matching
+    res = cv2.matchTemplate(img2,template,meth)
+    #Filters location map so that only one gaussian is found per contiguous location
+    location_map =  res >= threshold*np.max(res)
+    location_map,nr = ndi.label(location_map)
+    print "Nb of contiguous zones detected:",nr
+    list_x = []
+    list_y = []
+    for label in range(1,nr+1):
+        tmp=location_map==label
+        if np.count_nonzero(tmp)>1:
+            points = np.where(tmp)
+            l = len(points[0])
+            cx = (np.sum(points[0]) + l/2)/l
+            cy = (np.sum(points[1]) + l/2 )/l
+            list_x.append(cx)
+            list_y.append(cy)
+    loc= (np.asarray(list_x),np.asarray(list_y))
+    stack_to_remove = np.zeros((size,size,len(loc[0])))
+    i=0
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(img2, pt, (pt[0] + w, pt[1] + h), 255, 2)
+        stack_to_remove[:,:,i] = img[pt[1]:pt[1]+w,pt[0]:pt[0]+h]
+        
+        i+=1
+    plt.figure()
+    plt.subplot(121),plt.imshow(res,cmap = 'gray')
+    plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+    plt.colorbar()
+    plt.subplot(122),plt.imshow(img2,cmap = 'gray')
+    plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+    plt.suptitle(method)
 
-centered = centered.reshape(sh)
-tr=tr.reshape(sh)
-m.si2(centered,tr,"original","ICA transofrmed")
+    plt.show()
+    return stack_to_remove,loc
+t=time.time()
+stack_to_remove,locs=optimal_template_matching(cl1)
+print "elapsed time: ", time.time()-t
 
+#visualizing the objects
+"""
+for i in range(stack_to_remove.shape[2]/2):
+    m.si2(stack_to_remove[:,:,2*i],stack_to_remove[:,:,2*i+1])"""
+
+import scipy.optimize
+
+def gaussian2((a,b),size,sigma,am,off,xoff,yoff):
+    """Generates a square gaussian mask with size*size pixels and std sigma"""
+    mask = (a-xoff)**2+(b-yoff)**2
+    mask = am*np.exp(-mask.astype('float')/(2*float(sigma**2)))+off
+    return mask.ravel()
+
+def gaussianFit(image):
+    w = image.shape[0]
+    a,b=np.ogrid[-w/2:w/2,-w/2:w/2]
+    f = lambda (x,y),sigma,a,off,xoff,yoff : gaussian2((x,y),w,sigma,a,off,xoff,yoff)
+    xdata = a**2+b**2
+    xdata = (a,b)
+    ydata = image.ravel()
+    #sigma,amplitude,offset,xoff,yoff
+    bounds_inf = [1,0,-255,-w/2,-w/2]
+    bounds_sup = [w,255,255,w/2,w/2]
+    bds=(bounds_inf,bounds_sup)
+    fit = scipy.optimize.curve_fit(f,xdata,ydata,bounds=bds)
+    return fit
+
+popt,pcov=gaussianFit(stack_to_remove[:,:,0])
+perr=  np.sqrt(np.diag(pcov))
+print "error estination:",perr
+w = stack_to_remove[:,:,0].shape[0]
+a,b=np.ogrid[-w/2:w/2,-w/2:w/2]
+new_img = cl1.copy()
+
+for i in range(stack_to_remove.shape[2]):
+    print np.max(stack_to_remove[:,:,i])
+    popt,pcov=gaussianFit(stack_to_remove[:,:,i])
+    simul = gaussian2((a,b),w,popt[0],popt[1],popt[2],popt[3],popt[4]).reshape(w,w)
+    pt=(locs[0][i],locs[1][i])
+    new_img[pt[0]:pt[0]+w,pt[1]:pt[1]+w] -=simul.astype(np.uint8)
+    #m.si2(stack_to_remove[:,:,i],stack_to_remove[:,:,i]-simul,
+    #     "Original image nr "+str(i),"Difference with simulation")
+m.si2(cl1,new_img,"Original","Gaussian substracted")
