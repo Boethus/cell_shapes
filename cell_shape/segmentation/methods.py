@@ -172,7 +172,6 @@ def segmentation(total):
 
 def wavelet_denoising2(im,wlt='sym2',lvl=5,fraction=0.76):
     coeffs_trous = pywt.swt2(im,wlt,lvl,start_level=0)
-    
     total = np.ones(im.shape)
     #Add Gaussian blur
     for elts in coeffs_trous:
