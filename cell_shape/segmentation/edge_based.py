@@ -18,7 +18,6 @@ import skimage.filters
 from sklearn.preprocessing import normalize
 
 plt.close("all")
-print "caca"
 def openFrame(number):
     name = os.path.join("..","data","yoshi_mov_2",str(number)+".tif")
     img = Image.open(name)

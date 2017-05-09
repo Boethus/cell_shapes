@@ -130,4 +130,4 @@ denoised2=denoised2.astype(np.uint8)
 denoised2 = rank.median(denoised2, disk(4))
 m.si2(denoised,denoised2,"denoising after arctan","denoising after histo eq")
 
-#denoiseStack(path,new_path)
+denoiseStack(path,new_path)
