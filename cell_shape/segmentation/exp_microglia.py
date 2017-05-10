@@ -14,6 +14,7 @@ import skimage.feature
 import skimage.filters
 import cv2
 import scipy.ndimage as ndi
+import glob
 import os
 from PIL import Image
 from skimage.filters import try_all_threshold
@@ -69,18 +70,20 @@ def removeGaussians(img):
     m.si2(img,filtered_array,"Original image","Degaussianed image")
     
 def denoiseStack(path,target_dir):
-    elements = os.listdir(path)
+    elements = glob.glob(path+"/*.png")
     if not os.path.isdir(target_dir):
         os.mkdir(target_dir)
     for elt in elements:
-        print "processing",elt
-        name = os.path.join(path,elt)
-        img = Image.open(name)
+        print "processing",elt.split("/")[-1]
+        img = Image.open(elt)
         img = np.asarray(img)
-        equilibrium = cv2.equalizeHist(img.astype(np.uint8))
-        filtered = m.wavelet_denoising2(equilibrium,wlt='sym2',lvl=6,fraction=0.8)
-        filtered = (filtered/np.max(filtered)*255).astype(np.uint8)
-        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt),filtered)
+        clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
+        cl1 = clahe.apply(img)
+        cl2 = clahe.apply(cl1)
+        cl2 = m.wavelet_denoising2(cl2,lvl=3)
+        cl2 = cl2*255/np.max(cl2)
+        cl2 = cl2.astype(np.uint8)
+        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split("/")[-1]),cl2)
 plt.close('all')
 
 frame_number=130

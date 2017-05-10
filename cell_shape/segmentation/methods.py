@@ -183,3 +183,9 @@ def wavelet_denoising2(im,wlt='sym2',lvl=5,fraction=0.76):
         total*=cA
     return total
 
+def gaussian(size,sigma):
+    """Generates a square gaussian mask with size*size pixels and std sigma"""
+    a,b=np.ogrid[-size/2:size/2,-size/2:size/2]
+    mask = a**2+b**2
+    mask = np.exp(-mask.astype('float')/(2*float(sigma**2)))
+    return mask

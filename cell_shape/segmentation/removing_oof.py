@@ -17,7 +17,6 @@ import time
 """Attempt to remove gaussian spots using wavelets"""
 plt.close('all')
 
-
 #Filtering
 def process(im):
     """Combines Laplace and wavelet filtering to set alight the signal and 
@@ -34,13 +33,6 @@ def process(im):
         total+=(coeff)
     return total
 
-frameNum = 130
-path = os.path.join("..",'data','microglia','RFP1_denoised','filtered_Scene1Interval'+str(frameNum)+'_RFP.png')
-path = os.path.join("..",'data','microglia','RFP1','Scene1Interval'+str(frameNum)+'_RFP.png')
-
-img = Image.open(path)
-
-im = np.asarray(img)
 
 def wavelet_denoising2(im,wlt='sym2',lvl=5,fraction=0.76):
     coeffs_trous = pywt.swt2(im,wlt,lvl,start_level=0)
@@ -52,17 +44,6 @@ def wavelet_denoising2(im,wlt='sym2',lvl=5,fraction=0.76):
         cA = m.abe(cA,var)
         total*=cA
     return total
-
-
-clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
-cl1 = clahe.apply(im)
-
-cl2=clahe.apply(cl1)
-#cl2 = cv2.equalizeHist(cl1)
-cl2 = wavelet_denoising2(cl2,lvl=3)
-m.si(cl2,"Image denoised used as work base")
-cl2 = cl2*255/np.max(cl2)
-cl2 = cl2.astype(np.uint8)
 
 def gaussian(size,sigma):
     """Generates a square gaussian mask with size*size pixels and std sigma"""
@@ -110,7 +91,7 @@ def find_gaussian(img,sigma=25):
         cv2.rectangle(img2, pt, (pt[0] + w, pt[1] + h), 255, 2)
         stack_to_remove[:,:,i] = img[pt[1]:pt[1]+w,pt[0]:pt[0]+h]
         i+=1
-    m.si(img2)
+    #m.si(img2)
     return stack_to_remove,loc
 
 import scipy.optimize
@@ -142,7 +123,7 @@ def gaussianFit(image):
 def filter_out_gaussians(img):
     """Uses template matching to find different sizes of gaussians in 
     img, fits them and then removes them from img."""
-    list_of_sigmas = [30,25,15]
+    list_of_sigmas = [40,30,20,10]
     new_img = img.copy()
     for sigma in list_of_sigmas:
         stack_to_remove,locs=find_gaussian(new_img.astype(np.uint8),sigma)
@@ -154,17 +135,87 @@ def filter_out_gaussians(img):
             popt,pcov=gaussianFit(stack_to_remove[:,:,i])
             simul = gaussian2((a,b),popt[0],popt[1],popt[2],popt[3],popt[4]).reshape(w,w)
             new_img[pt[0]:pt[0]+w,pt[1]:pt[1]+w] -=simul
-            new_img = np.abs(new_img)
+            new_img[new_img<0]=0
             #m.si2(stack_to_remove[:,:,i],stack_to_remove[:,:,i]-simul)
     
     m.si2(img,new_img,"Original","Gaussian substracted")
     plt.colorbar()
     return new_img
 
+
+
+frameNum = 130
+path = os.path.join("..",'data','microglia','RFP1_denoised','filtered_Scene1Interval'+str(frameNum)+'_RFP.png')
+path = os.path.join("..",'data','microglia','RFP1','Scene1Interval'+str(frameNum)+'_RFP.png')
+
+img = Image.open(path)
+
+im = np.asarray(img)
+clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
+cl1 = clahe.apply(im)
+
+cl2=clahe.apply(cl1)
+#cl2 = cv2.equalizeHist(cl1)
+cl2 = wavelet_denoising2(cl2,lvl=3)
+m.si(cl2,"Image denoised used as work base")
+cl2 = cl2*255/np.max(cl2)
+cl2 = cl2.astype(np.uint8)
+
 filtered = filter_out_gaussians(cl2)
+m.si(filtered,"image filtered from gaussians")
+filtered = filtered/np.max(filtered)*255
+filtered=filtered.astype(np.uint8)
+filtered=clahe.apply(filtered)
+filtered=filtered.astype(np.float)
+filtered= wavelet_denoising2(filtered,lvl=2,fraction=0.5)
+m.si(filtered,"filtered denoised")
 from skimage.filters import try_all_threshold
 import skimage.filters
-try_all_threshold(filtered)
+#try_all_threshold(filtered)
 
-t = skimage.filters.threshold_otsu(filtered)
-m.si2(cl2,cl2>t,"original","thresholded")
+#t = skimage.filters.threshold_otsu(filtered)
+t=skimage.filters.threshold_adaptive(filtered,501)
+m.si2(filtered,t,"original","thresholded")
+
+label,nr = ndi.label(t)
+label=m.filter_by_size(label,40)
+print "Evolution of the number of matches:",nr,np.max(label)
+m.si(label,"labeled image")
+
+t2=skimage.filters.threshold_adaptive(cl2,501)
+kernel = np.ones((5,5),np.uint8)
+eroded = cv2.erode(t2.astype(np.uint8),kernel,iterations=2)
+m.si(eroded,"image eroded")
+label_2,nr2 = ndi.label(t2)
+label_2 = m.filter_by_size(label_2,40)
+print "Evolution of the number of matches:",nr2,np.max(label_2)
+
+#Active contours
+s = np.linspace(0, 2*np.pi, 400)
+x = 220 + 100*np.cos(s)
+y = 100 + 100*np.sin(s)
+init = np.array([x, y]).T
+from skimage.segmentation import active_contour
+
+snake = active_contour(skimage.filters.gaussian(filtered, 3),
+                           init, alpha=0.015, beta=1, gamma=0.001)
+
+fig = plt.figure(figsize=(7, 7))
+ax = fig.add_subplot(111)
+plt.gray()
+ax.imshow(filtered)
+ax.plot(init[:, 0], init[:, 1], '--r', lw=3)
+ax.plot(snake[:, 0], snake[:, 1], '-b', lw=3)
+ax.set_xticks([]), ax.set_yticks([])
+ax.axis([0, filtered.shape[1], filtered.shape[0], 0])
+
+
+#Random Walker
+t3=skimage.filters.threshold_adaptive(filtered,501)
+
+kernel = np.ones((3,3),np.uint8)
+eroded = cv2.erode(t3.astype(np.uint8),kernel,iterations=3)
+m.si(eroded,"image filtered and eroded")
+
+markers,nr = ndi.label(eroded)
+w = skimage.segmentation.random_walker(filtered,markers)
