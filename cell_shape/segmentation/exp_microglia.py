@@ -18,6 +18,7 @@ import glob
 import os
 from PIL import Image
 from skimage.filters import try_all_threshold
+import platform
 
 def gf(img,sigma):
     img2 = skimage.filters.gaussian(img,sigma)
@@ -71,10 +72,14 @@ def removeGaussians(img):
     
 def denoiseStack(path,target_dir):
     elements = glob.glob(path+"/*.png")
+    if platform.system()=='Windows':
+        separator="\\"
+    else:
+        separator="/"
     if not os.path.isdir(target_dir):
         os.mkdir(target_dir)
     for elt in elements:
-        print "processing",elt.split("/")[-1]
+        print "processing",elt.split(separator)[-1]
         img = Image.open(elt)
         img = np.asarray(img)
         clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
@@ -83,7 +88,7 @@ def denoiseStack(path,target_dir):
         cl2 = m.wavelet_denoising2(cl2,lvl=3)
         cl2 = cl2*255/np.max(cl2)
         cl2 = cl2.astype(np.uint8)
-        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split("/")[-1]),cl2)
+        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split(separator)[-1]),cl2)
 plt.close('all')
 
 frame_number=130
@@ -109,8 +114,8 @@ m.si2(equilibrium,filtered,'Histogram equilibrated image','image filtered')
 #removeGaussians(filtered)
 
 #Saves the denoised images
-path = os.path.join("..",'data','microglia','RFP1')
-new_path = os.path.join("..",'data','microglia','RFP1_denoised')
+path = os.path.join("..",'data','microglia','RFP2')
+new_path = os.path.join("..",'data','microglia','RFP2_denoised')
 
 #############################################
 

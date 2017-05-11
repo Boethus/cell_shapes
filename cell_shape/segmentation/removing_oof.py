@@ -14,6 +14,8 @@ import cv2
 import skimage.filters
 import scipy.ndimage as ndi
 import time
+import glob
+import platform
 """Attempt to remove gaussian spots using wavelets"""
 plt.close('all')
 
@@ -123,7 +125,7 @@ def gaussianFit(image):
 def filter_out_gaussians(img):
     """Uses template matching to find different sizes of gaussians in 
     img, fits them and then removes them from img."""
-    list_of_sigmas = [40,30,20,10]
+    list_of_sigmas = [40,30,20]
     new_img = img.copy()
     for sigma in list_of_sigmas:
         stack_to_remove,locs=find_gaussian(new_img.astype(np.uint8),sigma)
@@ -138,15 +140,31 @@ def filter_out_gaussians(img):
             new_img[new_img<0]=0
             #m.si2(stack_to_remove[:,:,i],stack_to_remove[:,:,i]-simul)
     
-    m.si2(img,new_img,"Original","Gaussian substracted")
-    plt.colorbar()
+    #m.si2(img,new_img,"Original","Gaussian substracted")
+    #plt.colorbar()
     return new_img
 
+def deGaussianStack(path,target_dir):
+    elements = glob.glob(path+"/*.png")
+    if platform.system()=='Windows':
+        separator="\\"
+    else:
+        separator="/"
+    if not os.path.isdir(target_dir):
+        os.mkdir(target_dir)
+    for elt in elements:
+        print "processing",elt.split(separator)[-1]
+        img = Image.open(elt)
+        img = np.asarray(img)
+        filtered = filter_out_gaussians(img)
+        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split(separator)[-1]),filtered)
+to_degaussian = os.path.join("..",'data','microglia','RFP1_denoised')
+write_degaussian = os.path.join("..",'data','microglia','RFP1_degaussianed')
+deGaussianStack(to_degaussian,write_degaussian)
 
-
-frameNum = 130
+frameNum = 11
 path = os.path.join("..",'data','microglia','RFP1_denoised','filtered_Scene1Interval'+str(frameNum)+'_RFP.png')
-path = os.path.join("..",'data','microglia','RFP1','Scene1Interval'+str(frameNum)+'_RFP.png')
+path = os.path.join("..",'data','microglia','RFP1','Scene1Interval0'+str(frameNum)+'_RFP.png')
 
 img = Image.open(path)
 
@@ -190,32 +208,3 @@ label_2,nr2 = ndi.label(t2)
 label_2 = m.filter_by_size(label_2,40)
 print "Evolution of the number of matches:",nr2,np.max(label_2)
 
-#Active contours
-s = np.linspace(0, 2*np.pi, 400)
-x = 220 + 100*np.cos(s)
-y = 100 + 100*np.sin(s)
-init = np.array([x, y]).T
-from skimage.segmentation import active_contour
-
-snake = active_contour(skimage.filters.gaussian(filtered, 3),
-                           init, alpha=0.015, beta=1, gamma=0.001)
-
-fig = plt.figure(figsize=(7, 7))
-ax = fig.add_subplot(111)
-plt.gray()
-ax.imshow(filtered)
-ax.plot(init[:, 0], init[:, 1], '--r', lw=3)
-ax.plot(snake[:, 0], snake[:, 1], '-b', lw=3)
-ax.set_xticks([]), ax.set_yticks([])
-ax.axis([0, filtered.shape[1], filtered.shape[0], 0])
-
-
-#Random Walker
-t3=skimage.filters.threshold_adaptive(filtered,501)
-
-kernel = np.ones((3,3),np.uint8)
-eroded = cv2.erode(t3.astype(np.uint8),kernel,iterations=3)
-m.si(eroded,"image filtered and eroded")
-
-markers,nr = ndi.label(eroded)
-w = skimage.segmentation.random_walker(filtered,markers)
