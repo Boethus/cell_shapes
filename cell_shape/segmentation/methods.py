@@ -78,8 +78,8 @@ def getNoiseVar(img,fraction=0.95):
 
 def filter_by_size(img_segm,mini_nb_pix):
     """filters a segmented image by getting rid of the components with too few pixels"""
-    numbers = np.zeros(np.max(img_segm))
-    for i in range(1,np.max(img_segm)+1):
+    numbers = np.zeros(int(np.max(img_segm)))
+    for i in range(1,int(np.max(img_segm))+1):
         numbers[i-1] = np.sum(img_segm==i)
         
     indexes = np.arange(1,np.max(img_segm)+1)
