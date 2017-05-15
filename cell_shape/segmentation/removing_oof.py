@@ -158,6 +158,7 @@ def deGaussianStack(path,target_dir):
         img = np.asarray(img)
         filtered = filter_out_gaussians(img)
         cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split(separator)[-1]),filtered)
+"""
 to_degaussian = os.path.join("..",'data','microglia','RFP1_denoised')
 write_degaussian = os.path.join("..",'data','microglia','RFP1_degaussianed')
 deGaussianStack(to_degaussian,write_degaussian)
@@ -207,4 +208,4 @@ m.si(eroded,"image eroded")
 label_2,nr2 = ndi.label(t2)
 label_2 = m.filter_by_size(label_2,40)
 print "Evolution of the number of matches:",nr2,np.max(label_2)
-
+"""
