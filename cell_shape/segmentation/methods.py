@@ -14,7 +14,8 @@ import skimage.filters
 import cv2
 import scipy.ndimage as ndi
 import pywt
-
+import glob
+import platform
 #plt.close("all")
 
 def openFrame(number):
@@ -189,3 +190,57 @@ def gaussian(size,sigma):
     mask = a**2+b**2
     mask = np.exp(-mask.astype('float')/(2*float(sigma**2)))
     return mask
+
+def denoiseStack(path,target_dir):
+    elements = glob.glob(path+"/*.png")
+    if platform.system()=='Windows':
+        separator="\\"
+    else:
+        separator="/"
+    if not os.path.isdir(target_dir):
+        os.mkdir(target_dir)
+    for elt in elements:
+        print "processing",elt.split(separator)[-1]
+        img = Image.open(elt)
+        img = np.asarray(img)
+        clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
+        cl1 = clahe.apply(img)
+        cl2 = clahe.apply(cl1)
+        cl2 = wavelet_denoising2(cl2,lvl=3)
+        cl2 = cl2*255/np.max(cl2)
+        cl2 = cl2.astype(np.uint8)
+        cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split(separator)[-1]),cl2)
+
+#-------------Display functions---------------------------------------
+def show_points_on_img(mask,img):
+    """Shows the points encoded in mask on img"""
+    labeled, num_objects = ndi.label(mask)
+    slices = ndi.find_objects(labeled)
+    x, y = [], []
+    for dy,dx in slices:
+        x_center = (dx.start + dx.stop - 1)/2
+        x.append(x_center)
+        y_center = (dy.start + dy.stop - 1)/2    
+        y.append(y_center)
+    
+    plt.imshow(img)
+    plt.savefig('/tmp/data.png', bbox_inches = 'tight')
+    
+    plt.autoscale(False)
+    plt.plot(x,y, 'ro')
+    plt.savefig('/tmp/result.png', bbox_inches = 'tight')
+    
+# display results
+def overlay_mask2image(img,mask,title=None):
+    fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(8, 8), sharex=True, sharey=True, subplot_kw={'adjustable':'box-forced'})
+    #ax = axes.ravel()
+    ax = axes
+    ax.imshow(img, cmap=plt.cm.gray, interpolation='nearest')
+    ax.imshow(mask, cmap=plt.cm.spectral, interpolation='nearest', alpha=.7)
+    if title:
+        ax.set_title(title)
+    
+    fig.tight_layout()
+    plt.show()
+
+print ";)"
