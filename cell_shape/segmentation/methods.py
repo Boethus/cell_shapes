@@ -211,6 +211,62 @@ def denoiseStack(path,target_dir):
         cl2 = cl2.astype(np.uint8)
         cv2.imwrite(os.path.join(target_dir,'filtered_'+elt.split(separator)[-1]),cl2)
 
+#----------------Handling gaussians------------------------------------------
+def find_gaussian(img,sigma=25):
+    """Optimal template matching to find a gaussian with std sigma in img"""
+    method = 'cv2.TM_CCOEFF_NORMED'
+    size=3*sigma
+    template = gaussian(size,sigma)
+    template/=template.max()
+    template*=255
+    template = template.astype(np.uint8)
+    
+    threshold = 0.9
+    w, h = template.shape[::-1]
+    
+    img2 = img.copy()
+    meth = eval(method)
+
+    # Apply template Matching
+    res = cv2.matchTemplate(img2,template,meth)
+    #Filters location map so that only one gaussian is found per contiguous location
+    location_map =  res >= threshold*np.max(res)
+    location_map,nr = ndi.label(location_map)
+    print "Nb of contiguous zones detected:",nr
+    list_x = []
+    list_y = []
+    for label in range(1,nr+1):
+        tmp=location_map==label
+        if np.count_nonzero(tmp)>1:
+            points = np.where(tmp)
+            l = len(points[0])
+            cx = (np.sum(points[0]) + l/2)/l
+            cy = (np.sum(points[1]) + l/2 )/l
+            list_x.append(cx)
+            list_y.append(cy)
+    loc= (np.asarray(list_x),np.asarray(list_y))
+    stack_to_remove = np.zeros((size,size,len(loc[0])))
+    i=0
+    for pt in zip(*loc[::-1]):
+        cv2.rectangle(img2, pt, (pt[0] + w, pt[1] + h), 255, 2)
+        stack_to_remove[:,:,i] = img[pt[1]:pt[1]+w,pt[0]:pt[0]+h]
+        i+=1
+    #m.si(img2)
+    return stack_to_remove,loc
+
+def where_are_gaussians(img):
+    """Finds gaussians in img and returns a mask of pixels in a gaussian."""
+    list_of_sigmas = [40,30,20,10]
+    mask=np.zeros(img.shape,dtype=bool)
+    for sigma in list_of_sigmas:
+        stack_to_remove,locs=find_gaussian(img.astype(np.uint8),sigma)
+        w = stack_to_remove[:,:,0].shape[0]
+        a,b=np.ogrid[-w/2:w/2,-w/2:w/2]
+        for i in range(stack_to_remove.shape[2]):
+            pt=(locs[0][i],locs[1][i])
+            mask[pt[0]:pt[0]+w,pt[1]:pt[1]+w] = True
+    return mask
+
 #-------------Display functions---------------------------------------
 def show_points_on_img(mask,img):
     """Shows the points encoded in mask on img"""
@@ -222,14 +278,28 @@ def show_points_on_img(mask,img):
         x.append(x_center)
         y_center = (dy.start + dy.stop - 1)/2    
         y.append(y_center)
-    
+    plt.figure()
     plt.imshow(img)
-    plt.savefig('/tmp/data.png', bbox_inches = 'tight')
-    
     plt.autoscale(False)
-    plt.plot(x,y, 'ro')
-    plt.savefig('/tmp/result.png', bbox_inches = 'tight')
-    
+    plt.plot(x,y, "o")
+
+def show_holes_on_img(mask,img):
+    """Shows the points encoded in mask on img"""
+    labeled, num_objects = ndi.label(mask)
+    slices = ndi.find_objects(labeled)
+    radius=9
+    out_image = img.copy()
+    out_image = cv2.cvtColor(out_image, cv2.COLOR_GRAY2RGB)
+    for dy,dx in slices:
+        x_center = (dx.start + dx.stop - 1)/2
+        y_center = (dy.start + dy.stop - 1)/2    
+        center=(x_center,y_center)
+        cv2.circle(out_image, center, radius,(111,17,108),thickness=2)
+
+    plt.figure()
+    plt.imshow(out_image)
+    plt.autoscale(False)
+    return out_image
 # display results
 def overlay_mask2image(img,mask,title=None):
     fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(8, 8), sharex=True, sharey=True, subplot_kw={'adjustable':'box-forced'})
@@ -243,4 +313,8 @@ def overlay_mask2image(img,mask,title=None):
     fig.tight_layout()
     plt.show()
 
-print ";)"
+def cv_overlay_mask2image(img,mask):
+    """Overlay a mask to an image using opencv"""
+    transparency=0.5
+    cv2.addWeighted(mask,transparency,img,1-transparency,0,img)
+

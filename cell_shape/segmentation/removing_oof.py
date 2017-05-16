@@ -144,6 +144,19 @@ def filter_out_gaussians(img):
     #plt.colorbar()
     return new_img
 
+def where_are_gaussians(img):
+    """Finds gaussians in img and returns a mask of pixels in a gaussian."""
+    list_of_sigmas = [40,30,20]
+    mask=np.zeros(img.shape,dtype=bool)
+    for sigma in list_of_sigmas:
+        stack_to_remove,locs=find_gaussian(img.astype(np.uint8),sigma)
+        w = stack_to_remove[:,:,0].shape[0]
+        a,b=np.ogrid[-w/2:w/2,-w/2:w/2]
+        for i in range(stack_to_remove.shape[2]):
+            pt=(locs[0][i],locs[1][i])
+            mask[pt[0]:pt[0]+w,pt[1]:pt[1]+w] = True
+    return mask
+
 def deGaussianStack(path,target_dir):
     elements = glob.glob(path+"/*.png")
     if platform.system()=='Windows':
