@@ -140,7 +140,7 @@ def classifyPhaseImage():
     kmeans = KMeans(n_clusters=3).fit(X)
     classified = kmeans.labels_
     classified=classified.reshape(phase.shape)
-    m.si(classified)
+    m.si2(phase,classified,"Phase image","Classification")
 
 def cell_arms(image,size_to_remove=64):
     clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(50,50))
@@ -177,9 +177,10 @@ lab = m.overlay_mask2image(im_holes,mask_gaussians,title="Gaussian masks")
 arms = cell_arms(image_normal)
 m.cv_overlay_mask2image(image_normal,arms)
 
-for i in range(1,150):
-    im=open_frame(i)
-    mask = cell_arms(im,150)
-    m.cv_overlay_mask2image(im,mask)
-    savepath = os.path.join("..",'data','microglia','cell_arms',str(i)+'.png')
-    cv2.imwrite(savepath,im)
+def save_cell_arms():
+    for i in range(1,150):
+        im=open_frame(i)
+        mask = cell_arms(im,150)
+        m.cv_overlay_mask2image(im,mask)
+        savepath = os.path.join("..",'data','microglia','cell_arms',str(i)+'.png')
+        cv2.imwrite(savepath,im)
