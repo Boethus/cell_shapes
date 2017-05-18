@@ -313,8 +313,16 @@ def overlay_mask2image(img,mask,title=None):
     fig.tight_layout()
     plt.show()
 
-def cv_overlay_mask2image(img,mask):
+def cv_overlay_mask2image(mask,img):
     """Overlay a mask to an image using opencv"""
-    transparency=0.5
-    cv2.addWeighted(mask,transparency,img,1-transparency,0,img)
+    transparency=0.2
+    image=cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)
+    if mask.dtype==np.int:
+        mask = mask>0
+        mask = mask.astype(np.uint8)*255
+    mask = cv2.cvtColor(mask,cv2.COLOR_GRAY2RGB)
+    mask[:,:,0]=0
+    mask[:,:,2]=0
+    cv2.addWeighted(mask,transparency,image,1-transparency,0,image)
+    return image
 
