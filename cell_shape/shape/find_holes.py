@@ -169,6 +169,7 @@ def findHoles(image):
     local_minima = np.logical_and(local_minima,~mask_gaussians)
     local_minima = local_minima.astype(np.uint8)
     return lab,im_holes
+
 def classifyPhaseImage():
     phase_path = os.path.join("..",'data','microglia','Beacon-1 unst',"Scene1Interval"+str(fr_nb)+"_PHASE.png")
     
@@ -201,10 +202,6 @@ def save_cell_arms():
         m.cv_overlay_mask2image(im,mask)
         savepath = os.path.join("..",'data','microglia','cell_arms',str(i)+'.png')
         cv2.imwrite(savepath,im)
-def equalize_histo_in_mask(image,mask):
-    image_eq = cv2.equalizeHist(image)
-    image_eq[mask==0]=0
-    return image_eq
  
 fr_nb = 211
 def processFrame(fr_nb):
@@ -235,4 +232,4 @@ def processFrame(fr_nb):
 savepath=os.path.join("..","data","microglia","cell_arms_2")
 for i in range(31,241):
     print "processing frame"+str(i)
-    cv2.imwrite(os.path.join(savepath,str(i)+".tif"),processFrame(i))
+    cv2.imwrite(os.path.join(savepath,str(i)+".png"),processFrame(i))

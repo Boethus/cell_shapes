@@ -24,6 +24,7 @@ def openImage(frameNum):
     return im
 
 def find_cells(frameNum,sizeFilter=150,cinema=False):
+    """Thresholding+opening+labeling+size filtering"""
     frameNum=str(frameNum)
     nb = '0000'
     nb=nb[0:4-len(frameNum)]+frameNum
@@ -32,7 +33,7 @@ def find_cells(frameNum,sizeFilter=150,cinema=False):
     im = np.asarray(img)
     clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(30,30))
     im = clahe.apply(im)
-    #thresh_hard = custom_threshold(im)
+    
     thresh_hard = (im>f.threshold_li(im)).astype(np.uint8)
     if sizeFilter>0:
         kernel = np.ones((5,5),np.uint8)
@@ -71,14 +72,17 @@ class Tracker(object):
     
     We use here a quite heavily filtered by size image, as we are not interested 
     in small pieces here for main tracking"""
-    def __init__(self):
+    def __init__(self,path=None):
         self.info_list=[]
         self.correspondance_lists=[]
         self.first_frame = 0
         self.last_frame = 150
         
         #Unused yet
-        self.path = os.path.join("..",'data','microglia','RFP1_cropped')
+        if path:
+            self.path = path
+        else:
+            self.path = os.path.join("..",'data','microglia','RFP1_cropped')
         
     def preprocess(self,first_frame = -1, last_frame = -1):
         if first_frame>=0:
@@ -243,7 +247,7 @@ class Tracker(object):
         for i in range(first_frame,last_frame+1):
             cv2.imshow("Not processed movie",find_cells(i))
             cv2.waitKey(wait)
-
+"""
 #20,21 there is an apparition
 trac = Tracker()
 trac.preprocess(15,30)
@@ -264,4 +268,4 @@ unfiltered21 = find_cells(21,sizeFilter=0)
 
 unfiltered20[f20>0]=0
 unfiltered21[f21>0]=0
-m.si2(unfiltered20,unfiltered21,"remaining in fr 20","in fr 21")
+m.si2(unfiltered20,unfiltered21,"remaining in fr 20","in fr 21")"""
