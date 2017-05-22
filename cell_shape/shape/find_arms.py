@@ -77,13 +77,13 @@ def track_bits(save=True):
     return track_centers,track_arms
 track_centers,track_arms = track_bits()
 #Tracking done between fr 1 and 241 Excluded-> Last frame missing
-"""
+
 track_centers=0
 with open('track_centers.pkl','rb') as out:
     track_centers = pickle.load(out)
 track_arms = 0
 with open('track_arms.pkl','rb') as out:
-    track_arms = pickle.load(out)"""
+    track_arms = pickle.load(out)
 
 def assign_arm(path_centers,path_arms,center_tracker,arm_tracker):
     """Assigns each arm to a center. Returns a list of lists, 
@@ -108,7 +108,7 @@ def assign_arm(path_centers,path_arms,center_tracker,arm_tracker):
 
     return arms_assignment_list
           
-#liste = assign_arm(path_centers,path_arms,0,0)
+liste = assign_arm(path_centers,path_arms,0,0)
 def check_frame(nr,liste):
     """Check how previous step worked. nr goes between 1 and 241"""          
     corresps = liste[nr-1]
@@ -185,7 +185,7 @@ class Trajectory(object):
         corresp = [y for x,y in corresp_in_frame if x==nr_center]
         
         if len(corresp)!=1:
-            print "error too  many matches found ", corresp
+            print "error too  many matches found ", corresp,"label not found:",nr_center
         return corresp[0]
 
 traj = Trajectory(Cell(2,5),2,30)

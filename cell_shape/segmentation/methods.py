@@ -31,10 +31,10 @@ def open_frame(path,number):
     """Open frame with number located at path"""
     num=str(number).zfill(3)   #Zero filling
     name = glob.glob(path+"/*"+num+"*")
+    if len(name)==0:
+        name = glob.glob(path+"/"+str(number)+".png")
     if len(name)>1:
         print "too many matches ",len(name)," found"
-    if len(name)==0:
-        name = glob.glob(path+"/*"+str(number)+"*")
     name = name[0]
     img = Image.open(name)
     img = np.asarray(img)
@@ -508,22 +508,13 @@ def w_hungarian(prev_centroids,next_centroids,max_distance=50):
     return correspondance_list
 
 class FrameInfo(object):
-    """Class remembering the information from a labeled frame"""
+    """Class remembering the information from a labeled frame.
+    All indexes should start with 0"""
     def __init__(self,frame_nr,frame):
         self.nr = frame_nr
         self.n_objects = int(np.max(frame))
         self.objects_size = []
-        self.centroids = []
-        xs = []
-        ys = []
-        for i in range(1,self.n_objects+1):
-            pos_list = np.where(frame==i)
-            xc = np.mean(pos_list[0])
-            yc = np.mean(pos_list[1])
-            xs.append(xc)
-            ys.append(yc)
-            self.objects_size.append( len(pos_list[0]))
-        self.centroids = (xs,ys)
+        self.centroids = centroids(frame)
 #-------Just to wait---
 def find_cells():
     """Just to wait"""
@@ -544,7 +535,7 @@ class Tracker(object):
         self.info_list=[]
         self.correspondance_lists=[]
         self.first_frame = 0
-        self.last_frame = 150
+        self.last_frame = 240
         self.n_frames=n_frames
         
         if path:
@@ -552,17 +543,14 @@ class Tracker(object):
         else:
             self.path = os.path.join("..",'data','microglia','RFP1_cropped')
         
-    def preprocess(self,first_frame = -1, last_frame = -1):
-        if first_frame>=0:
-            self.first_frame = first_frame
-        if last_frame>=0 and last_frame>first_frame:
-            self.last_frame = last_frame
-        prev_centroids = self.info_list[self.first_frame].centroids
+    def preprocess(self):
+        prev_centroids = self.info_list[0].centroids
         
         for i in range(1,241):
             print "Tracking iteration ",i
             next_centroids = self.info_list[i].centroids
             match_list = w_hungarian(prev_centroids,next_centroids)
+            prev_centroids = next_centroids[:]
             self.correspondance_lists.append(match_list)
             
     def segment(self,path=None):
