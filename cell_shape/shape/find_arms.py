@@ -177,6 +177,7 @@ class Experiment(object):
         track_arms = m.Tracker()
         
         for i in range(1,self.n_frames+1):
+            print "track arms and centers iter",i
             centers = m.open_frame(self.body_path,i)
             arms = m.open_frame(self.arm_path,i)
             info_arms = m.FrameInfo(i,arms)
@@ -351,7 +352,7 @@ path_arms = os.path.join("..",'data','microglia','1_arms')
 
 experiment1 = Experiment(path,path_centers,path_arms)
 
-experiment1.load_arms_and_centers()
+experiment1.track_arms_and_centers()
 experiment1.assign_arm()
 experiment1.save()
 experiment1.load()
