@@ -97,7 +97,7 @@ class Trajectory(object):
             corresp_in_frame = correspondances[fr_nb]
             index_of_element = [i for i,(x,y) in enumerate(corresp_in_frame) if x==label]
             index_of_element = index_of_element[0]
-            next_element = correspondances[fr_nb].pop(index_of_element)[1]
+            next_element = body_tracker.correspondance_lists[fr_nb].pop(index_of_element)[1]
             current_cell = Cell(fr_nb+1,next_element)
             if next_element==-1:
                 self.cells.append(current_cell)
@@ -139,10 +139,16 @@ class Experiment(object):
         self.body_tracker=[]
  
         self.arms_list=[]
+        #arms unsure is a list of size n_frames. unsure_arms_list[i] is the list
+        #of arms associated with all the possible nucleus they come from
         self.unsure_arms_list=[]
         #Free arms list contains all the arms which are independant
         self.free_arms_list = []
+        
+        self.trajectories = []
     
+        self.apparitions_events = []
+        self.disparition_events=[]
     def segmentStack(self):
         """Segments every element in the stack"""
         if not os.path.isdir(self.body_path):
@@ -235,25 +241,105 @@ class Experiment(object):
     
     def compute_trajectories_in_frame(self,start_frame):
         """Computes all trajectories starting in frame nr"""
-        nb_cells_in_frame = self.body_tracker.info_list[start_frame].n_objects
         trajectory_list = []
         
         if len(self.arms_list)==0:
             print "Arms list is empty. Please initialize it first using assign_arm()"
             return
-        
-        print len(self.body_tracker.correspondance_lists[start_frame])
-        for label in range(nb_cells_in_frame):
-            cell_trajectory = Trajectory(Cell(start_frame,label))
-            cell_trajectory.compute_trajectory(self.arms_list,self.body_tracker)
-            trajectory_list.append(cell_trajectory)
-        print len(self.body_tracker.correspondance_lists[start_frame])
+        corres= self.body_tracker.correspondance_lists[start_frame][:]
+        for label,osef in corres:
+            if label!=-1:
+                cell_trajectory = Trajectory(Cell(start_frame,label))
+                cell_trajectory.compute_trajectory(self.arms_list,self.body_tracker)
+                trajectory_list.append(cell_trajectory)
         return trajectory_list
     
+    def compute_all_trajectories(self):
+        """Calculates all the trajectories, removes them from self.body_tracker
+        and adds them in the list self.trajectories"""
+        for frame_nb in range(self.n_frames-1):
+            trajectory_list = self.compute_trajectories_in_frame(frame_nb)
+            self.trajectories.append(trajectory_list)
+            
+    def nature_event(self,cell_body,index1,index2):
+        """Determines the nature of an apparition or disparition event for the
+        cell labeled cell_body, in the frame with index1:
+        -Transformation body->arm
+        -Fusion/division with neighbouring cell"""
+        bodies1 = m.open_frame(self.body_path,index1+1) 
+        #arms1 = m.open_frame(self.arm_path,index1+1) 
+        
+        bodies2 = m.open_frame(self.body_path,index2+1)
+        arms2 = m.open_frame(self.arm_path,index2+1)
+        
+        mask = bodies1==(cell_body+1)
+        nb_pixels = np.count_nonzero(mask)
+        if cell_body==84:
+            print "frame",index1+1,"Value we look fr:",cell_body+1
+            m.si2(mask,bodies1)
+        projection_arms = arms2[mask]    #List of arms pixels overlapping the cell body in previous frame
+        counts = np.bincount(projection_arms)
+        label_arms = np.argmax(counts)
+        #Frequency of pixels in the cell body overlapping an the arm label_arms in frame 2
+        frequency_arms = float(counts[label_arms])/nb_pixels
+        
+        #Same with cell bodies in frame 2:
+        projection_bodies = bodies2[mask]
+        counts = np.bincount(projection_bodies)
+        label_bodies = np.argmax(counts)
+        #Frequency of pixels in the cell body overlapping an the arm label_arms in frame 2
+        frequency_bodies = float(counts[label_bodies])/nb_pixels
+        return (frequency_arms,label_arms-1),(frequency_bodies,label_bodies-1)
+    
+    def classify_events(self):
+        """Loops over each "-1" type events and determines what they correspond to.
+        Must be called after compute_all_trajectories.
+        Classified in two types: fusion with a body (True) or with an arm(False)"""
+        
+        #Apparitions
+        print "apparitions"
+        apparition_list=[]
+        for i in range(self.n_frames):
+            apparitions = [y for x,y in self.body_tracker.correspondance_lists[i] ]
+            print i,self.body_tracker.correspondance_lists[i]
+            classifications=[]
+            for body_label in apparitions:
+                print "find label",body_label,"in frame",i
+                (p1,l1),(p2,l2)=self.nature_event(body_label,i+1,i)
+                if l1==-1:
+                    classifications.append((body_label,l2,True))  #Fusion with a body
+                elif l2==-1:
+                    classifications.append((body_label,l1,False)) #Fusion with an arm
+                elif p2>p1:   #Otherwise get the more likely
+                    classifications.append((body_label,l2,True))
+                elif p1>=p2:
+                    classifications.append((body_label,l1,False))
+            apparition_list.append(classifications)
+        print "disparitions"
+        #Disparitions: Loop over the trajectories
+        disparition_list = []
+        for i in range(self.n_frames-1):
+            #Disparitions is a list of tuples (frame_number,body_disappearing)
+            disparitions = [ (x.end,x.cells[-1].body) for x in self.trajectories[i]]
+            classifications = []
+            for index,body_label in disparitions:
+                (p1,l1),(p2,l2)=self.nature_event(body_label,index,index+1)
+                if l1==-1:
+                    classifications.append((body_label,l2,True))  #Fusion with a body
+                elif l2==-1:
+                    classifications.append((body_label,l1,False)) #Fusion with an arm
+                elif p2>p1:   #Otherwise get the more likely
+                    classifications.append((body_label,l2,True))
+                elif p1>=p2:
+                    classifications.append((body_label,l1,False))
+            disparition_list.append(classifications)
+        self.apparitions_events = apparition_list
+        self.disparition_events = disparition_list
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
             pickle.dump(self.__dict__,out)
+            
     def load(self):
         name="experiment"
         with open(os.path.join(path,name),'rb') as dataPickle:
@@ -264,13 +350,67 @@ path_centers = os.path.join("..",'data','microglia','1_centers')
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
 experiment1 = Experiment(path,path_centers,path_arms)
-#experiment1.load_arms_and_centers()
-#experiment1.assign_arm()
 
-
+experiment1.load_arms_and_centers()
+experiment1.assign_arm()
+experiment1.save()
 experiment1.load()
+experiment1.compute_all_trajectories()
+experiment1.classify_events()
+print experiment1.nature_event(57,0,1)
+
+"""
 trajectory_list = experiment1.compute_trajectories_in_frame(0)
 best_trajectory = trajectory_list[6]
 cells_bodies_in_best_traj = [x.body for x in best_trajectory.cells]
 
 show_trajectory(best_trajectory,path,path_centers,path_arms,100)
+"""
+
+#Frame numbers start from 0. Indexes from 1!!!
+disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
+disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
+apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1)]   #Frame, cell appearing, n of cluster it belonged before
+apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
+
+apparition_from_arm_to_body_exterior = [(2,85),(20,56)]  #If transformation close to the edge we can forgive
+def show_disparitions(corresp):
+    return [x+1 for (x,y) in corresp if y==-1]
+def show_apparitions(corresp):
+    return [y+1 for (x,y) in corresp if x==-1]
+def show_app_and_dis(corres,nr):
+    print "apparitions:"
+    print show_apparitions(corres[nr])
+    print "disparitions:"
+    print show_disparitions(corres[nr])
+
+def test_prediction(experiment):
+    disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
+    disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
+    apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1)]   #Frame, cell appearing, n of cluster it belonged before
+    apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
+    apparition_from_arm_to_body_exterior = [(2,85),(20,56)]
+    
+    print "disparitions: from noyau to arm"
+    for (u,v) in disparitions_from_nucl_to_arm:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
+        print "arm:",p1,l1,"body",p2,l2
+    print "disparitions: fusion"
+    for (u,v,w) in disp_fusion:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
+        
+        print "arm:",p1,l1,"body",p2,l2
+        
+    print "apparitions:decluster"
+    for (u,v,w) in apparitions_decluster:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
+        print "arm:",p1,l1,"body",p2,l2
+        
+    print "apparitions:arm t body"
+    for (u,v) in apparition_from_arm_to_body:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
+        print "arm:",p1,l1,"body",p2,l2
+test_prediction(experiment1)
+im1 = m.open_frame(path_centers,1)
+im2 = m.open_frame(path_centers,2)
+mask = im1==58

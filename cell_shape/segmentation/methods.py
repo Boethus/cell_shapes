@@ -431,16 +431,24 @@ def overlay_mask2image(img,mask,title=None):
     fig.tight_layout()
     plt.show()
 
-def cv_overlay_mask2image(mask,img):
+def cv_overlay_mask2image(mask,img,color="green"):
     """Overlay a mask to an image using opencv"""
     transparency=0.2
-    image=cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)
     if mask.dtype==np.int:
         mask = mask>0
         mask = mask.astype(np.uint8)*255
-    mask = cv2.cvtColor(mask,cv2.COLOR_GRAY2RGB)
-    mask[:,:,0]=0
-    mask[:,:,2]=0
+        
+    mask = cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
+    if len(img.shape)==2:
+        image=cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)
+    else:
+        image=img.copy()
+    if color=="green":
+        mask[:,:,0]=0
+        mask[:,:,2]=0
+    else:
+        mask[:,:,0]=0
+        mask[:,:,1]=0
     cv2.addWeighted(mask,transparency,image,1-transparency,0,image)
     return image
 
@@ -502,8 +510,11 @@ def w_hungarian(prev_centroids,next_centroids,max_distance=50):
     apparition_list = [] 
     for i, coords in enumerate(correspondance_list):
         if cost_matrix[coords]>max_distance**2:
-            correspondance_list[i] = (coords[0],-1)
-            apparition_list.append((-1,coords[1]))
+            if coords[0]<len(xs0):
+                correspondance_list[i] = (coords[0],-1)
+            if coords[1]<len(xs1):
+                apparition_list.append((-1,coords[1]))
+                
     correspondance_list.extend(apparition_list)
     return correspondance_list
 
@@ -515,6 +526,8 @@ class FrameInfo(object):
         self.n_objects = int(np.max(frame))
         self.objects_size = []
         self.centroids = centroids(frame)
+    def __str__(self):
+        return "Frame N:"+str(self.nr)+" Nr objects: "+str(self.n_objects)
 #-------Just to wait---
 def find_cells():
     """Just to wait"""
