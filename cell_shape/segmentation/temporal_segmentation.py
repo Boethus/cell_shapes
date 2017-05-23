@@ -118,7 +118,7 @@ def movie():
     plt.figure()
     plt.plot(points)
     plt.title("Number of elements detected")
-"""
+
 plt.close('all')
 frameNum = 32
 frameNum=str(frameNum)
@@ -149,7 +149,7 @@ print np.max(elt)
 img_underlined = im.copy()
 img_underlined[elt>0]=255
 m.si(img_underlined,"image underlined")
-"""
+
 def overlay(img,thresh):
     out = img.copy()
     if thresh.dtype==bool:
@@ -157,7 +157,7 @@ def overlay(img,thresh):
     else:
         out[thresh==0]=0
     return out
-"""
+
 img_underlined2 = im.copy()
 th_li = f.threshold_li(im)
 img_underlined2[im<th_li]=0
@@ -168,4 +168,4 @@ nr=np.max(lab)
 m.si2(img_underlined2,lab,"Threshold li","labeled "+str(nr)+" components")
 opli = cv2.morphologyEx(tli.astype(np.uint8), cv2.MORPH_OPEN, kernel,iterations=2)
 m.si2(im,overlay(im,opli),"original","pverlaid")
-"""
+

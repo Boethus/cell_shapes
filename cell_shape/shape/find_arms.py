@@ -269,15 +269,12 @@ class Experiment(object):
         -Fusion/division with neighbouring cell"""
         bodies1 = m.open_frame(self.body_path,index1+1) 
         #arms1 = m.open_frame(self.arm_path,index1+1) 
-        
+        print index2+1
         bodies2 = m.open_frame(self.body_path,index2+1)
         arms2 = m.open_frame(self.arm_path,index2+1)
         
         mask = bodies1==(cell_body+1)
         nb_pixels = np.count_nonzero(mask)
-        if cell_body==84:
-            print "frame",index1+1,"Value we look fr:",cell_body+1
-            m.si2(mask,bodies1)
         projection_arms = arms2[mask]    #List of arms pixels overlapping the cell body in previous frame
         counts = np.bincount(projection_arms)
         label_arms = np.argmax(counts)
@@ -300,12 +297,11 @@ class Experiment(object):
         #Apparitions
         print "apparitions"
         apparition_list=[]
-        for i in range(self.n_frames):
+        for i in range(self.n_frames-1):
             apparitions = [y for x,y in self.body_tracker.correspondance_lists[i] ]
             print i,self.body_tracker.correspondance_lists[i]
             classifications=[]
             for body_label in apparitions:
-                print "find label",body_label,"in frame",i
                 (p1,l1),(p2,l2)=self.nature_event(body_label,i+1,i)
                 if l1==-1:
                     classifications.append((body_label,l2,True))  #Fusion with a body
@@ -321,7 +317,9 @@ class Experiment(object):
         disparition_list = []
         for i in range(self.n_frames-1):
             #Disparitions is a list of tuples (frame_number,body_disappearing)
-            disparitions = [ (x.end,x.cells[-1].body) for x in self.trajectories[i]]
+            #Dispqrition involvesan object being there in a frame and not there
+            #in the next one so we need to rule out the last element
+            disparitions = [ (x.end,x.cells[-1].body) for x in self.trajectories[i] if x.end<self.n_frames-1]
             classifications = []
             for index,body_label in disparitions:
                 (p1,l1),(p2,l2)=self.nature_event(body_label,index,index+1)
@@ -336,29 +334,31 @@ class Experiment(object):
             disparition_list.append(classifications)
         self.apparitions_events = apparition_list
         self.disparition_events = disparition_list
+        
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
             pickle.dump(self.__dict__,out)
-            
+
     def load(self):
         name="experiment"
         with open(os.path.join(path,name),'rb') as dataPickle:
             self.__dict__ = pickle.load(dataPickle)
+            
 #--------------------------Script-----------------------------------------------
 path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
 experiment1 = Experiment(path,path_centers,path_arms)
-
+"""
+experiment1.segmentStack()
 experiment1.track_arms_and_centers()
 experiment1.assign_arm()
-experiment1.save()
+experiment1.save()"""
 experiment1.load()
 experiment1.compute_all_trajectories()
 experiment1.classify_events()
-print experiment1.nature_event(57,0,1)
 
 """
 trajectory_list = experiment1.compute_trajectories_in_frame(0)
@@ -411,6 +411,7 @@ def test_prediction(experiment):
     for (u,v) in apparition_from_arm_to_body:
         (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
         print "arm:",p1,l1,"body",p2,l2
+
 test_prediction(experiment1)
 im1 = m.open_frame(path_centers,1)
 im2 = m.open_frame(path_centers,2)
