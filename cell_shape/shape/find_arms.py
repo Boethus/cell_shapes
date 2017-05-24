@@ -84,7 +84,6 @@ class Trajectory(object):
         current_cell = self.cells.pop()
 
         correspondances = body_tracker.correspondance_lists
-        
         for fr_nb in range(current_cell.frame_number,self.end):
             label = current_cell.body
             if label<len(list_of_arms[fr_nb]):
@@ -95,12 +94,9 @@ class Trajectory(object):
             self.cells.append(current_cell)
             
             corresp_in_frame = correspondances[fr_nb]
-            index_of_element = [i for i,(x,y) in enumerate(corresp_in_frame) if x==label]
-            index_of_element = index_of_element[0]
-            next_element = body_tracker.correspondance_lists[fr_nb].pop(index_of_element)[1]
+            next_element =  [y for x,y in corresp_in_frame if x==label][0]
             current_cell = Cell(fr_nb+1,next_element)
             if next_element==-1:
-                self.cells.append(current_cell)
                 self.end = fr_nb
                 return
 
@@ -268,8 +264,7 @@ class Experiment(object):
         -Transformation body->arm
         -Fusion/division with neighbouring cell"""
         bodies1 = m.open_frame(self.body_path,index1+1) 
-        #arms1 = m.open_frame(self.arm_path,index1+1) 
-        print index2+1
+        
         bodies2 = m.open_frame(self.body_path,index2+1)
         arms2 = m.open_frame(self.arm_path,index2+1)
         
@@ -292,14 +287,15 @@ class Experiment(object):
     def classify_events(self):
         """Loops over each "-1" type events and determines what they correspond to.
         Must be called after compute_all_trajectories.
-        Classified in two types: fusion with a body (True) or with an arm(False)"""
+        Classified in two types: fusion with a body (True) or with an arm(False)
+        An apparition or disparition event is a tuple, made of:
+        (label_involved,label_of_new_item,isNewItemBody)"""
         
         #Apparitions
         print "apparitions"
         apparition_list=[]
         for i in range(self.n_frames-1):
-            apparitions = [y for x,y in self.body_tracker.correspondance_lists[i] ]
-            print i,self.body_tracker.correspondance_lists[i]
+            apparitions = [y for x,y in self.body_tracker.correspondance_lists[i] if x==-1 ]
             classifications=[]
             for body_label in apparitions:
                 (p1,l1),(p2,l2)=self.nature_event(body_label,i+1,i)
@@ -314,15 +310,16 @@ class Experiment(object):
             apparition_list.append(classifications)
         print "disparitions"
         #Disparitions: Loop over the trajectories
+        
         disparition_list = []
         for i in range(self.n_frames-1):
             #Disparitions is a list of tuples (frame_number,body_disappearing)
             #Dispqrition involvesan object being there in a frame and not there
             #in the next one so we need to rule out the last element
-            disparitions = [ (x.end,x.cells[-1].body) for x in self.trajectories[i] if x.end<self.n_frames-1]
+            disparitions = [x for x,y in self.body_tracker.correspondance_lists[i] if y==-1 ]
             classifications = []
-            for index,body_label in disparitions:
-                (p1,l1),(p2,l2)=self.nature_event(body_label,index,index+1)
+            for body_label in disparitions:
+                (p1,l1),(p2,l2)=self.nature_event(body_label,i,i+1)
                 if l1==-1:
                     classifications.append((body_label,l2,True))  #Fusion with a body
                 elif l2==-1:
@@ -335,6 +332,45 @@ class Experiment(object):
         self.apparitions_events = apparition_list
         self.disparition_events = disparition_list
         
+    def split_merged_bodies(self):
+        """In the case of a merging event, ie two bodies merge into one, looks for the 
+        disparition and tracks the corresponding nucleus until a cell reappears.
+        Works only if there are two nuclei in collision with each other"""
+        mergings = []  #Merging is a list of merging lists in each frames. A merging list 
+        max_nb_objects = max([x.n_objects for x in self.body_tracker.info_list])
+        #Clustering matrix contains for each time frame and each label the number of cells
+        #making a cluster. 0 means that an object is an object alone.
+        clustering_matrix = np.zeros((self.n_frames,max_nb_objects))
+        for frame in range(self.n_frames-1):
+            disparitions = self.disparition_events[frame]
+            apparitions = self.apparition_events[frame]
+            merging_in_frame = []
+            #Iterates for each disparition in frame
+            for label,new_object_label,is_body in disparitions:
+                #Case nucleus-nucleus fusion
+                if is_body and new_object_label!=-1:
+                    #Iterate over the next frames to find a corresponding apparition event
+                    clustering_matrix[frame,new_object_label]+=1
+                    object_to_track = new_object_label
+                    for next_frame in range(frame+1,self.n_frames-1):
+                        apparitions = self.apparitions_events[next_frame]
+                        #candidates are objects which appear from object_to_track in the frame after next_frame
+                        candidates = [(i,lab) for i,(new_lab,lab,fromBody) in enumerate(apparitions) if (lab==object_to_track and fromBody)]
+                        if len(candidates)>1:
+                            print "too many candidates frame",next_frame
+                        if len(candidates)==1:
+                            corresp_apparition = (next_frame,apparitions[candidates[0][0]])
+                            corresp_disparition = (frame,(label,new_object_label,is_body))
+                            merging_in_frame.append((corresp_disparition,corresp_apparition))
+                            break
+                        else:
+                            object_to_track = self.body_tracker.next_cell(next_frame,object_to_track)
+                            if object_to_track==-1:
+                                print "disparition of next element"
+                                break
+                            
+            mergings.append(merging_in_frame)
+        return mergings
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
@@ -354,11 +390,21 @@ experiment1 = Experiment(path,path_centers,path_arms)
 """
 experiment1.segmentStack()
 experiment1.track_arms_and_centers()
+experiment1.assign_arm()"""
+#experiment1.load()
+
+"""
+experiment1.load_arms_and_centers()
 experiment1.assign_arm()
-experiment1.save()"""
-experiment1.load()
+#experiment1.save()
 experiment1.compute_all_trajectories()
-experiment1.classify_events()
+#experiment1.save()
+experiment1.classify_events()"""
+experiment1.load()
+#experiment1.classify_events()
+mergings = experiment1.split_merged_bodies()
+
+
 
 """
 trajectory_list = experiment1.compute_trajectories_in_frame(0)
@@ -412,7 +458,4 @@ def test_prediction(experiment):
         (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
         print "arm:",p1,l1,"body",p2,l2
 
-test_prediction(experiment1)
-im1 = m.open_frame(path_centers,1)
-im2 = m.open_frame(path_centers,2)
-mask = im1==58
+#test_prediction(experiment1)

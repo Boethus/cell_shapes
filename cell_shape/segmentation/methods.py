@@ -566,6 +566,29 @@ class Tracker(object):
             prev_centroids = next_centroids[:]
             self.correspondance_lists.append(match_list)
             
+    def next_cell(self,frame,label):
+        """Finds for the cell label in frame, the label of the same cell in the next cell"""
+        elements = [y for x,y in self.correspondance_lists[frame] if x==label]
+        if frame>len(self.correspondance_lists) or frame<0:
+            raise ValueError('Trying to access an element outside the video range')
+        if len(elements)>1:
+            raise IndexError('Tracker found more than one match for label '+str(label)+' in frame '+str(frame))
+        if len(elements)==0:
+            raise IndexError('Tracker could not find any match for label '+str(label)+' in frame '+str(frame))
+        return elements[0]
+    
+    def prev_cell(self,frame,label):
+        """Finds for the cell label in frame, the label of the same cell in the previous cell"""
+        elements = [x for x,y in self.correspondance_lists[frame] if y==label]
+        
+        if frame>len(self.correspondance_lists) or frame<0:
+            raise ValueError('Trying to access an element outside the video range')
+        if len(elements)>1:
+            raise IndexError('Tracker found more than one match for label '+str(label)+' in frame '+str(frame))
+        if len(elements)==0:
+            raise IndexError('Tracker could not find any match for label '+str(label)+' in frame '+str(frame))
+        return elements[0]
+    
     def segment(self,path=None):
         """Uses the information extracted fron the preprocessing step to segment
         the images"""
