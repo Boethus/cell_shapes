@@ -271,17 +271,22 @@ class Experiment(object):
         mask = bodies1==(cell_body+1)
         nb_pixels = np.count_nonzero(mask)
         projection_arms = arms2[mask]    #List of arms pixels overlapping the cell body in previous frame
-        counts = np.bincount(projection_arms)
-        label_arms = np.argmax(counts)
-        #Frequency of pixels in the cell body overlapping an the arm label_arms in frame 2
-        frequency_arms = float(counts[label_arms])/nb_pixels
+        counts_arms = np.bincount(projection_arms)
+        label_arms = np.argmax(counts_arms)
         
         #Same with cell bodies in frame 2:
         projection_bodies = bodies2[mask]
-        counts = np.bincount(projection_bodies)
-        label_bodies = np.argmax(counts)
+        counts_bodies = np.bincount(projection_bodies)
+        label_bodies = np.argmax(counts_bodies)
+        
+        if label_arms==0 and label_bodies==0:
+            counts_arms[label_arms]=0
+            counts_bodies[label_bodies]=0
+            label_arms = np.argmax(counts_arms)
+            label_bodies = np.argmax(counts_bodies)
         #Frequency of pixels in the cell body overlapping an the arm label_arms in frame 2
-        frequency_bodies = float(counts[label_bodies])/nb_pixels
+        frequency_arms = float(counts_arms[label_arms])/nb_pixels
+        frequency_bodies = float(counts_bodies[label_bodies])/nb_pixels
         return (frequency_arms,label_arms-1),(frequency_bodies,label_bodies-1)
     
     def classify_events(self):
@@ -299,6 +304,8 @@ class Experiment(object):
             classifications=[]
             for body_label in apparitions:
                 (p1,l1),(p2,l2)=self.nature_event(body_label,i+1,i)
+                if p1<0.1 and p2<0.1:
+                    pass    #if probas too low do nothing
                 if l1==-1:
                     classifications.append((body_label,l2,True))  #Fusion with a body
                 elif l2==-1:
@@ -336,47 +343,46 @@ class Experiment(object):
         """In the case of a merging event, ie two bodies merge into one, looks for the 
         disparition and tracks the corresponding nucleus until a cell reappears.
         Works only if there are two nuclei in collision with each other"""
-        mergings = []  #Merging is a list of merging lists in each frames. A merging list 
         max_nb_objects = max([x.n_objects for x in self.body_tracker.info_list])
         #Clustering matrix contains for each time frame and each label the number of cells
-        #making a cluster. 0 means that an object is an object alone.
+        print "split"
         clustering_matrix = np.zeros((self.n_frames,max_nb_objects))
         for frame in range(self.n_frames-1):
             disparitions = self.disparition_events[frame]
-            apparitions = self.apparition_events[frame]
-            merging_in_frame = []
+            apparitions = self.apparitions_events[frame]
             #Iterates for each disparition in frame
             for label,new_object_label,is_body in disparitions:
                 #Case nucleus-nucleus fusion
-                if is_body and new_object_label!=-1:
+                if is_body:
                     #Iterate over the next frames to find a corresponding apparition event
-                    clustering_matrix[frame,new_object_label]+=1
-                    object_to_track = new_object_label
-                    for next_frame in range(frame+1,self.n_frames-1):
-                        apparitions = self.apparitions_events[next_frame]
-                        #candidates are objects which appear from object_to_track in the frame after next_frame
-                        candidates = [(i,lab) for i,(new_lab,lab,fromBody) in enumerate(apparitions) if (lab==object_to_track and fromBody)]
-                        if len(candidates)>1:
-                            print "too many candidates frame",next_frame
-                        if len(candidates)==1:
-                            corresp_apparition = (next_frame,apparitions[candidates[0][0]])
-                            corresp_disparition = (frame,(label,new_object_label,is_body))
-                            merging_in_frame.append((corresp_disparition,corresp_apparition))
+                    
+                    label_after = new_object_label
+                    for i in range(frame+1,self.n_frames-1):
+                        if label_after==-1:
                             break
-                        else:
-                            object_to_track = self.body_tracker.next_cell(next_frame,object_to_track)
-                            if object_to_track==-1:
-                                print "disparition of next element"
-                                break
-                            
-            mergings.append(merging_in_frame)
-        return mergings
+                        clustering_matrix[i][label_after]+=1
+                        label_after = self.body_tracker.next_cell(i,label_after)
+            for label,object_losing_label,is_body in apparitions:
+                #Case nucleus-nucleus fusion
+                if is_body and object_losing_label!=-1:
+                    #Iterate over the next frames to find a corresponding apparition event
+                    
+                    label_after = self.body_tracker.next_cell(frame,object_losing_label)
+                    for i in range(frame+1,self.n_frames-1):
+                        if label_after==-1:
+                            break
+                        clustering_matrix[i][label_after]-=1
+                        label_after = self.body_tracker.next_cell(i,label_after)
+                        
+        return clustering_matrix
+    
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
             pickle.dump(self.__dict__,out)
 
     def load(self):
+        print "loading trois petits points"
         name="experiment"
         with open(os.path.join(path,name),'rb') as dataPickle:
             self.__dict__ = pickle.load(dataPickle)
@@ -398,14 +404,33 @@ experiment1.load_arms_and_centers()
 experiment1.assign_arm()
 #experiment1.save()
 experiment1.compute_all_trajectories()
-#experiment1.save()
-experiment1.classify_events()"""
+#experiment1.save()"""
 experiment1.load()
+
+#experiment1.classify_events()
+#experiment1.save()
 #experiment1.classify_events()
 mergings = experiment1.split_merged_bodies()
+from scipy.misc import imsave
+def process_mergings(mergings):
+    path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
+    for i in range(241):
+        print "process merging iteration ",i
+        centers = m.open_frame(path_centers,i+1)
+        indexes_merged = np.where(mergings[i,:]!=0)[0]
+        values_merged = np.zeros(indexes_merged.shape)
+    
+        for k,elt in enumerate(indexes_merged):
+            values_merged[k] = mergings[i,elt]
+        labels_merged = indexes_merged+1
+        out = np.zeros(centers.shape,dtype=np.int)
+        out[centers>0] = 1
+        for label,value in zip(labels_merged,values_merged):
+            if value>0:
+                out[centers==label] = value+1
+        cv2.imwrite(os.path.join(path_clusters,str(i)+".png"), out )
 
-
-
+process_mergings(mergings)
 """
 trajectory_list = experiment1.compute_trajectories_in_frame(0)
 best_trajectory = trajectory_list[6]
