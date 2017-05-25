@@ -99,8 +99,9 @@ class Trajectory(object):
             if next_element==-1:
                 self.end = fr_nb
                 return
-
-
+    def __eq__(self,other_traj):
+        """overloading operator ="""
+        return self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body
 def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
     cells_list = traj.cells
     for cell in cells_list:
@@ -493,7 +494,7 @@ class Experiment(object):
                     corresponding_apparition = [new_label for (label,new_label,isBody) in apparitions if label==first_cell and not isBody]
                     if len(corresponding_apparition)==1:
                         prev_arm = corresponding_apparition[0]
-                        raccomodations_before.append(( (i-1),index,prev_arm ))
+                        raccomodations_before.append(( (i),index,prev_arm ))
         return raccomodations_before, raccomodations           
             
     def tell_arms_apart(self):
@@ -549,9 +550,7 @@ experiment1.compute_all_trajectories()
 path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
-np.seterr(all='print')
 
-    
 def de_mess_labels(path_centers):
     """In case an index disappeared"""
     for i in range(0,241):
@@ -608,7 +607,12 @@ for u,v in list_of_raccomodated:
     traj1 = experiment2.trajectories[after_element[0]][after_element[1]]
     traj2 = experiment2.trajectories[before_element[0]][before_element[1]]
     new_traj = [traj1,after_element,before_element,traj2]
-#
+    trajectories_merged.append(new_traj)
+    
+#Verifying that there are no other completion to trajectory
+for merges in trajectories_merged:
+    last_traj = merges[-1]
+    for 
 #experiment2.save()
 out1,put2 = experiment2.find_arm_trajectory(3,7)
 
