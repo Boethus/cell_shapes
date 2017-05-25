@@ -487,17 +487,14 @@ class Experiment(object):
                     if len(corresponding_disparition)==1:
                         new_arm = corresponding_disparition[0]
                         raccomodations.append((i,index,new_arm))   #raccomodates self.trajectories[i][index]  to new_arm
-                
+                first_cell = traj.cells[0]
                 if i>0:
                     apparitions = self.apparitions_events[i-1]
-                    corresponding_apparition = [new_label for (label,new_label,isBody) in apparitions if label==last_cell and not isBody]
+                    corresponding_apparition = [new_label for (label,new_label,isBody) in apparitions if label==first_cell and not isBody]
                     if len(corresponding_apparition)==1:
                         prev_arm = corresponding_apparition[0]
                         raccomodations_before.append(( (i-1),index,prev_arm ))
-        return raccomodations, raccomodations_before
-    
-    def find_event_for_cell(self,label,frame):
-        """Finds if """            
+        return raccomodations_before, raccomodations           
             
     def tell_arms_apart(self):
         """Given the list of arms which can belong to several cells, follows 
@@ -525,7 +522,9 @@ path_arms = os.path.join("..",'data','microglia','1_arms')
 """
 experiment1 = Experiment(path,path_centers,path_arms)
 experiment1.load()
-"""
+
+mergings = experiment1.split_merged_bodies()"""
+
 
 """
 experiment1.segmentStack()
@@ -546,7 +545,6 @@ experiment1.compute_all_trajectories()
 #experiment1.save()
 #experiment1.classify_events()
 #experiment1.save()
-#mergings = experiment1.split_merged_bodies()
 
 path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
@@ -575,10 +573,42 @@ experiment2 = Experiment(path,path_centers,path_arms)
 """
 experiment2.track_arms_and_centers()
 experiment2.assign_arm()
-experiment2.compute_all_trajectories()"""
+experiment2.compute_all_trajectories()
+"""
 experiment2.load()
-a1,a2=experiment2.trajectory_racomodation()
-#experiment2.classify_events()
+experiment2.classify_events()
+#experiment2.save()
+raco_before,raco_after=experiment2.trajectory_racomodation()
+def raccomodate_after_to_before(frame,label,number,before_raccomodations):
+    """returns the index in before_raccomodation corresponding to the tuple
+    (frame,label,number) in after_raccomodation"""
+    next_label=label
+    for i in range(frame,239):
+        next_label_frame = experiment2.arm_tracker.next_cell(i,next_label)
+        if next_label_frame==-1:
+            candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if y==next_label and x==i]
+            if len(candidates)==1:
+                return candidates[0]
+            break
+        else:
+            next_label = next_label_frame
+    return -1
+list_of_raccomodated = []
+for i,(frame,label,number) in enumerate(raco_after):
+    index = raccomodate_after_to_before(frame,label,number,raco_before)
+    if index!=-1:
+        list_of_raccomodated.append((i,index))
+
+#list of raco : after,before
+trajectories_merged = []
+for u,v in list_of_raccomodated:
+    
+    after_element = raco_after[u]
+    before_element = raco_before[v]
+    traj1 = experiment2.trajectories[after_element[0]][after_element[1]]
+    traj2 = experiment2.trajectories[before_element[0]][before_element[1]]
+    new_traj = [traj1,after_element,before_element,traj2]
+#
 #experiment2.save()
 out1,put2 = experiment2.find_arm_trajectory(3,7)
 
