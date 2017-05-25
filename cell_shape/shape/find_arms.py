@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import glob
 import platform
 import cPickle as pickle
-
+from sklearn.neighbors import KNeighborsClassifier
 plt.close('all')
 
 def check_frame(nr,liste):
@@ -118,6 +118,55 @@ def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
         
         cv2.waitKey(wait)
     cv2.destroyAllWindows()
+
+def morphology_split(frame,label,number,max_labels_in_frame):
+    """Splits the object with label in frame in number pieces"""
+    if number<=1:
+        return
+    im2,contours,hierarchy = cv2.findContours((frame==label).astype(np.uint8), 1, 2)
+    cnt = contours[0]
+    x,y,w,h = cv2.boundingRect(cnt)
+    
+    sub_frame = (frame[y:y+h,x:x+w]==label).astype(np.uint8)
+    kernel = np.ones((3,3),np.uint8)
+    erosion = sub_frame.copy()
+    #For machine learning
+    neigh = KNeighborsClassifier(n_neighbors=1)
+    lab = 0
+    success = False
+    for i in range(15):
+        erosion = cv2.erode(erosion,kernel,iterations = 1)
+        lab,nr = ndi.label(erosion)
+        if nr==number:
+            #Correct separation
+            n=0 #Current index
+            n_training_values = np.count_nonzero(lab)
+            X = np.zeros( (n_training_values,2))
+            Y = np.zeros( n_training_values)
+            for i in range(nr):
+                    xlab,ylab = np.where(lab==i+1)
+                    ref_pts = np.concatenate((xlab.reshape(-1,1),ylab.reshape(-1,1)),axis=1)
+                    n_points_added = ref_pts.shape[0]
+                    X[n:n+n_points_added,:] = ref_pts
+                    Y[n:n+n_points_added] = i
+                    n+=n_points_added
+            neigh.fit(X,Y)
+            to_predict_x,to_predict_y = np.where(np.logical_and(lab==0,sub_frame>0))
+            to_predict = np.concatenate((to_predict_x.reshape(-1,1),to_predict_y.reshape(-1,1)),axis=1)
+            results = neigh.predict(to_predict)+1
+            lab[to_predict_x,to_predict_y] = results
+            success=True
+            break
+    if success:
+        #Replace by new labels
+        lab[lab==1]=label
+        for i in range(1,number):
+            lab[lab==i+1] = max_labels_in_frame+i
+        
+        lab[frame[y:y+h,x:x+w]!=label]=frame[y:y+h,x:x+w][frame[y:y+h,x:x+w]!=label]
+        frame.setflags(write=1)
+        frame[y:y+h,x:x+w]=lab
+    return success
 
 class Experiment(object):
     """Class doing all the job of an expreiment: sgmentation, tracking
@@ -357,10 +406,11 @@ class Experiment(object):
                     #Iterate over the next frames to find a corresponding apparition event
                     
                     label_after = new_object_label
+                    nb_cells_merging =  clustering_matrix[frame][label] +1
                     for i in range(frame+1,self.n_frames-1):
                         if label_after==-1:
                             break
-                        clustering_matrix[i][label_after]+=1
+                        clustering_matrix[i][label_after]+=nb_cells_merging
                         label_after = self.body_tracker.next_cell(i,label_after)
             for label,object_losing_label,is_body in apparitions:
                 #Case nucleus-nucleus fusion
@@ -368,14 +418,94 @@ class Experiment(object):
                     #Iterate over the next frames to find a corresponding apparition event
                     
                     label_after = self.body_tracker.next_cell(frame,object_losing_label)
+                    #Nb apparitions after this one, meaning ow many cells are in the appearing one
+                    
                     for i in range(frame+1,self.n_frames-1):
                         if label_after==-1:
                             break
-                        clustering_matrix[i][label_after]-=1
+                        if clustering_matrix[i][label_after]>0:
+                            clustering_matrix[i][label_after]-=1
                         label_after = self.body_tracker.next_cell(i,label_after)
-                        
+        #Processing the clustering matrix
+        new_path = os.path.join("..",'data','microglia','1_centers_improved') 
+        for nframe in range(self.n_frames):
+            print "rewriting frame",nframe+1
+            #Spearate each label
+            frame = m.open_frame(self.body_path,nframe+1)
+            for labels in range(clustering_matrix[nframe,:].shape[0]):
+                number = clustering_matrix[nframe,labels]
+                number=int(number)
+                max_labels_in_frame = np.max(frame)
+                if morphology_split(frame,labels+1,number+1,max_labels_in_frame):
+                    self.body_tracker.info_list[nframe].n_objects+=1
+                    
+            cv2.imwrite(os.path.join(new_path,str(nframe+1)+".png"),frame)
         return clustering_matrix
     
+    def find_arm_trajectory(self,frame,label):
+        """Given an arm, returns all its indexes over diferent frames"""
+        before_indices = []
+        before_cells = []
+        prev_cell = label
+        for i in range(1,frame+1):
+            prev_cell = self.arm_tracker.prev_cell(frame-i,prev_cell)
+            if prev_cell==-1:
+                break
+            before_indices.append(frame-i)
+            before_cells.append(prev_cell)
+        before_cells.reverse()
+        before_indices.reverse()
+        
+        after_indices=[]
+        after_cells = []
+        next_cell = label
+        for i in range(frame,self.n_frames):
+            next_cell = self.arm_tracker.next_cell(i,next_cell)
+            if next_cell==-1:
+                break
+            after_indices.append(i)
+            after_cells.append(next_cell)
+        before_cells.append(label)
+        before_cells.extend(after_cells)
+        before_indices.append(frame)
+        before_indices.extend(after_indices)
+        return before_indices,before_cells
+    
+    def trajectory_racomodation(self):
+        """if a nucleus disappears to ive birth to an arm. We racomodate these here"""
+        raccomodations = []
+        raccomodations_before = []
+        for i in range(self.n_frames-1):
+            traj_frame = self.trajectories[i]
+            for index,traj in enumerate(traj_frame):
+                endFrame = traj.end
+                last_cell = traj.cells[-1].body
+                if endFrame<self.n_frames-1:
+                    disparitions = self.disparition_events[endFrame]
+                    corresponding_disparition = [new_label for (label,new_label,isBody) in disparitions if label==last_cell and not isBody]
+                    #We only consider the case where isBody is Flase, ie body disappears for an arm.
+                    if len(corresponding_disparition)==1:
+                        new_arm = corresponding_disparition[0]
+                        raccomodations.append((i,index,new_arm))   #raccomodates self.trajectories[i][index]  to new_arm
+                
+                if i>0:
+                    apparitions = self.apparitions_events[i-1]
+                    corresponding_apparition = [new_label for (label,new_label,isBody) in apparitions if label==last_cell and not isBody]
+                    if len(corresponding_apparition)==1:
+                        prev_arm = corresponding_apparition[0]
+                        raccomodations_before.append(( (i-1),index,prev_arm ))
+        return raccomodations, raccomodations_before
+    
+    def find_event_for_cell(self,label,frame):
+        """Finds if """            
+            
+    def tell_arms_apart(self):
+        """Given the list of arms which can belong to several cells, follows 
+        their tracker to see wether they belong to some cell somewhere"""
+        for i in range(self.n_frames):
+            unsure_arms = self.unsure_arms_list[i]
+            for arm_label,cell_list in unsure_arms:
+                next_arm = self.arm_tracker.next_cell()
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
@@ -392,26 +522,66 @@ path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
+"""
 experiment1 = Experiment(path,path_centers,path_arms)
+experiment1.load()
+"""
+
 """
 experiment1.segmentStack()
 experiment1.track_arms_and_centers()
-experiment1.assign_arm()"""
+experiment1.assign_arm()
+experiment1.compute_all_trajectories()
+experiment1.save()
+
 #experiment1.load()
 
-"""
 experiment1.load_arms_and_centers()
 experiment1.assign_arm()
 #experiment1.save()
 experiment1.compute_all_trajectories()
 #experiment1.save()"""
-experiment1.load()
 
 #experiment1.classify_events()
 #experiment1.save()
 #experiment1.classify_events()
-mergings = experiment1.split_merged_bodies()
-from scipy.misc import imsave
+#experiment1.save()
+#mergings = experiment1.split_merged_bodies()
+
+path = os.path.join("..",'data','microglia','RFP1_denoised')
+path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
+path_arms = os.path.join("..",'data','microglia','1_arms')    
+np.seterr(all='print')
+
+    
+def de_mess_labels(path_centers):
+    """In case an index disappeared"""
+    for i in range(0,241):
+        print i
+        frame = m.open_frame(path_centers,i+1)
+        elts_in_frame = np.unique(frame)
+        missing = []
+        for j in range(np.max(frame)):
+            if not j in elts_in_frame:
+                print "element missing"
+                missing.append(j)
+        for elts in missing:
+            mm=np.max(frame)
+            frame[frame==mm]=elts
+        cv2.imwrite(os.path.join(path_centers,str(i+1)+".png"),frame)
+#de_mess_labels(path_centers)
+
+experiment2 = Experiment(path,path_centers,path_arms)
+"""
+experiment2.track_arms_and_centers()
+experiment2.assign_arm()
+experiment2.compute_all_trajectories()"""
+experiment2.load()
+a1,a2=experiment2.trajectory_racomodation()
+#experiment2.classify_events()
+#experiment2.save()
+out1,put2 = experiment2.find_arm_trajectory(3,7)
+
 def process_mergings(mergings):
     path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
     for i in range(241):
@@ -430,7 +600,7 @@ def process_mergings(mergings):
                 out[centers==label] = value+1
         cv2.imwrite(os.path.join(path_clusters,str(i)+".png"), out )
 
-process_mergings(mergings)
+#process_mergings(mergings)
 """
 trajectory_list = experiment1.compute_trajectories_in_frame(0)
 best_trajectory = trajectory_list[6]
@@ -484,3 +654,11 @@ def test_prediction(experiment):
         print "arm:",p1,l1,"body",p2,l2
 
 #test_prediction(experiment1)
+frame = m.open_frame(path_centers,2)
+label=61
+number=2
+
+
+success = morphology_split(frame,label,number,np.max(frame))
+print "Success:",success
+m.si(frame)

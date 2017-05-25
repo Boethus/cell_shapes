@@ -38,6 +38,7 @@ def open_frame(path,number):
     name = name[0]
     img = Image.open(name)
     img = np.asarray(img)
+    img.setflags(write=1)
     return img
 
 def filter_by_size(img_segm,mini_nb_pix):
@@ -351,7 +352,6 @@ def find_gaussian(img,sigma=25):
         cv2.rectangle(img2, pt, (pt[0] + w, pt[1] + h), 255, 2)
         stack_to_remove[:,:,i] = img[pt[1]:pt[1]+w,pt[0]:pt[0]+h]
         i+=1
-    #m.si(img2)
     return stack_to_remove,loc
 
 def where_are_gaussians(img):
