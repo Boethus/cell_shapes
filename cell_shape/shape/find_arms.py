@@ -120,6 +120,8 @@ def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
         cv2.waitKey(wait)
     cv2.destroyAllWindows()
 
+
+
 def morphology_split(frame,label,number,max_labels_in_frame):
     """Splits the object with label in frame in number pieces"""
     if number<=1:
@@ -488,7 +490,7 @@ class Experiment(object):
                     if len(corresponding_disparition)==1:
                         new_arm = corresponding_disparition[0]
                         raccomodations.append((i,index,new_arm))   #raccomodates self.trajectories[i][index]  to new_arm
-                first_cell = traj.cells[0]
+                first_cell = traj.cells[0].body
                 if i>0:
                     apparitions = self.apparitions_events[i-1]
                     corresponding_apparition = [new_label for (label,new_label,isBody) in apparitions if label==first_cell and not isBody]
@@ -497,13 +499,6 @@ class Experiment(object):
                         raccomodations_before.append(( (i),index,prev_arm ))
         return raccomodations_before, raccomodations           
             
-    def tell_arms_apart(self):
-        """Given the list of arms which can belong to several cells, follows 
-        their tracker to see wether they belong to some cell somewhere"""
-        for i in range(self.n_frames):
-            unsure_arms = self.unsure_arms_list[i]
-            for arm_label,cell_list in unsure_arms:
-                next_arm = self.arm_tracker.next_cell()
     def save(self):
         name="experiment"
         with open(os.path.join(path,name),'wb') as out:
@@ -575,46 +570,126 @@ experiment2.assign_arm()
 experiment2.compute_all_trajectories()
 """
 experiment2.load()
-experiment2.classify_events()
+#experiment2.classify_events()
 #experiment2.save()
 raco_before,raco_after=experiment2.trajectory_racomodation()
-def raccomodate_after_to_before(frame,label,number,before_raccomodations):
+def raccomodate_after_to_before(frame,label,number,before_raccomodations,experiment):
     """returns the index in before_raccomodation corresponding to the tuple
     (frame,label,number) in after_raccomodation"""
-    next_label=label
-    for i in range(frame,239):
-        next_label_frame = experiment2.arm_tracker.next_cell(i,next_label)
-        if next_label_frame==-1:
-            candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if y==next_label and x==i]
-            if len(candidates)==1:
+    traj = experiment.trajectories[frame][label]
+    nframe = traj.end
+    next_label = number
+    for i in range(nframe,239):
+        next_label_frame = experiment.arm_tracker.next_cell(i,next_label)
+        #x==i means in same frame z==next_label means that the label it appears from is next_label
+        candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i] 
+        if len(candidates)==1:
                 return candidates[0]
-            break
+        if next_label_frame==-1:
+            return -1
         else:
             next_label = next_label_frame
     return -1
 list_of_raccomodated = []
 for i,(frame,label,number) in enumerate(raco_after):
-    index = raccomodate_after_to_before(frame,label,number,raco_before)
+    index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
     if index!=-1:
         list_of_raccomodated.append((i,index))
 
 #list of raco : after,before
-trajectories_merged = []
-for u,v in list_of_raccomodated:
-    
-    after_element = raco_after[u]
-    before_element = raco_before[v]
-    traj1 = experiment2.trajectories[after_element[0]][after_element[1]]
-    traj2 = experiment2.trajectories[before_element[0]][before_element[1]]
-    new_traj = [traj1,after_element,before_element,traj2]
-    trajectories_merged.append(new_traj)
-    
-#Verifying that there are no other completion to trajectory
-for merges in trajectories_merged:
-    last_traj = merges[-1]
-    for 
-#experiment2.save()
-out1,put2 = experiment2.find_arm_trajectory(3,7)
+#eah consist of (index_traj_1,index_traj_2,label_of_new_element
+
+def assemble_complex_trajectories(complex_trajectory,z,list_of_raccomodated):
+    """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
+    z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
+    l,k = list_of_raccomodated.pop(z)
+    traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
+    if len(complex_trajectory)==0:
+        traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
+    else:
+        traj0 = complex_trajectory[-1]
+    complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
+    for l_prime, (i1,i2,label) in enumerate(raco_after):
+        #Find if there is a racomodation after
+        if traj0==experiment2.trajectories[i1][i2]:
+            #Find if this raccomoadtion can itself be raccomodated
+            candidates = [i for i,(x,y) in enumerate(list_of_raccomodated) if x==l_prime]
+            if len(candidates)==1:
+                return assemble_complex_trajectories(complex_trajectory,l_prime)
+            else:
+                complex_trajectory.append((i1,i2,label))
+                return
+    return
+
+list_of_racc_disposable = list_of_raccomodated[:]
+total_merged_trajectories = []  #List of complex trajectories
+for i in range(len(list_of_racc_disposable)):
+    comp_traj = []
+    if i>=len(list_of_racc_disposable):
+        break
+    assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable)
+    total_merged_trajectories.append(comp_traj)
+
+
+def show_complex_trajectory(comp_traj,experiment,wait=50):
+    """Displays a complex trajectory"""
+    path_im = experiment.path
+    path_body = experiment.body_path
+    path_arm = experiment.arm_path
+    previous = 'trajectory'
+    for i,elt in enumerate(comp_traj):
+        print i
+        if type(elt)==tuple:
+            #raccomodation
+            if i>0:
+                if type(comp_traj[i-1])==tuple:
+                    previous='tuple'
+                else:
+                    previous='trajectory'
+            
+            if previous=='trajectory':
+                #looks after
+                index_next1,index_next_2,_ = comp_traj[i+1]
+                next_traj = experiment.trajectories[index_next1][index_next_2]
+                stop_frame = next_traj.beginning
+                
+                last_frame = comp_traj[i-1].end
+                next_frame = last_frame+1
+                label = elt[2]
+                print "in tuple thiny"
+                while next_frame<stop_frame:
+                     
+                     img = m.open_frame(path_im,next_frame+1)
+                     arms = m.open_frame(path_arm,next_frame+1)
+                     mask = (arms==(label+1)).astype(np.uint8)*255
+                     print label
+                     label = experiment.arm_tracker.next_cell(next_frame,label)
+                     next_frame+=1
+                     overlaid = m.cv_overlay_mask2image(mask,img,"red")
+                     cv2.imshow("Trajectory",overlaid)
+                     cv2.waitKey(wait)
+        else:
+            
+            cells_list = elt.cells        
+            for cell in cells_list:
+                frame_number = cell.frame_number+1
+                img = m.open_frame(path_im,frame_number)
+                body = m.open_frame(path_body,frame_number)
+                arms = m.open_frame(path_arm,frame_number)
+                mask = (body==(cell.body+1)).astype(np.uint8)*255
+                mask_arms = np.zeros(mask.shape,dtype=np.uint8)
+                for arm in cell.arms:
+                    mask_arms+=(arms==(arm+1)).astype(np.uint8)*255
+                overlaid = m.cv_overlay_mask2image(mask,img,"green")
+                overlaid = m.cv_overlay_mask2image(mask_arms,overlaid,"red")
+                cv2.imshow("Trajectory",overlaid)
+                
+                cv2.waitKey(wait)
+    cv2.destroyAllWindows()
+
+
+comp_traj = total_merged_trajectories[7]
+show_complex_trajectory(comp_traj,experiment2,0)
 
 def process_mergings(mergings):
     path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
@@ -650,6 +725,7 @@ apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1
 apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
 
 apparition_from_arm_to_body_exterior = [(2,85),(20,56)]  #If transformation close to the edge we can forgive
+
 def show_disparitions(corresp):
     return [x+1 for (x,y) in corresp if y==-1]
 def show_apparitions(corresp):
@@ -687,12 +763,3 @@ def test_prediction(experiment):
         (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
         print "arm:",p1,l1,"body",p2,l2
 
-#test_prediction(experiment1)
-frame = m.open_frame(path_centers,2)
-label=61
-number=2
-
-
-success = morphology_split(frame,label,number,np.max(frame))
-print "Success:",success
-m.si(frame)
