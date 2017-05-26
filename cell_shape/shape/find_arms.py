@@ -295,12 +295,20 @@ class Experiment(object):
         if len(self.arms_list)==0:
             print "Arms list is empty. Please initialize it first using assign_arm()"
             return
-        corres= self.body_tracker.correspondance_lists[start_frame][:]
-        for label,osef in corres:
-            if label!=-1:
-                cell_trajectory = Trajectory(Cell(start_frame,label))
-                cell_trajectory.compute_trajectory(self.arms_list,self.body_tracker)
-                trajectory_list.append(cell_trajectory)
+        if start_frame==0:
+            corres= self.body_tracker.correspondance_lists[start_frame][:]
+            for label,osef in corres:
+                if label!=-1:
+                    cell_trajectory = Trajectory(Cell(start_frame,label))
+                    cell_trajectory.compute_trajectory(self.arms_list,self.body_tracker)
+                    trajectory_list.append(cell_trajectory)
+        else:
+             corres= self.body_tracker.correspondance_lists[start_frame-1][:]   #Just loop for he cells appearing
+             for appear,label in corres:
+                    if appear==-1:
+                        cell_trajectory = Trajectory(Cell(start_frame,label))
+                        cell_trajectory.compute_trajectory(self.arms_list,self.body_tracker)
+                        trajectory_list.append(cell_trajectory)
         return trajectory_list
     
     def compute_all_trajectories(self):
@@ -512,37 +520,6 @@ class Experiment(object):
             
 #--------------------------Script-----------------------------------------------
 path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers') 
-path_arms = os.path.join("..",'data','microglia','1_arms')    
-
-"""
-experiment1 = Experiment(path,path_centers,path_arms)
-experiment1.load()
-
-mergings = experiment1.split_merged_bodies()"""
-
-
-"""
-experiment1.segmentStack()
-experiment1.track_arms_and_centers()
-experiment1.assign_arm()
-experiment1.compute_all_trajectories()
-experiment1.save()
-
-#experiment1.load()
-
-experiment1.load_arms_and_centers()
-experiment1.assign_arm()
-#experiment1.save()
-experiment1.compute_all_trajectories()
-#experiment1.save()"""
-
-#experiment1.classify_events()
-#experiment1.save()
-#experiment1.classify_events()
-#experiment1.save()
-
-path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
@@ -566,12 +543,14 @@ def de_mess_labels(path_centers):
 experiment2 = Experiment(path,path_centers,path_arms)
 """
 experiment2.track_arms_and_centers()
+
+experiment2.load_arms_and_centers()
 experiment2.assign_arm()
 experiment2.compute_all_trajectories()
+experiment2.classify_events()
+experiment2.save()
 """
 experiment2.load()
-#experiment2.classify_events()
-#experiment2.save()
 raco_before,raco_after=experiment2.trajectory_racomodation()
 def raccomodate_after_to_before(frame,label,number,before_raccomodations,experiment):
     """returns the index in before_raccomodation corresponding to the tuple
@@ -579,14 +558,13 @@ def raccomodate_after_to_before(frame,label,number,before_raccomodations,experim
     traj = experiment.trajectories[frame][label]
     nframe = traj.end
     next_label = number
-    for i in range(nframe,239):
-        next_label_frame = experiment.arm_tracker.next_cell(i,next_label)
-        #x==i means in same frame z==next_label means that the label it appears from is next_label
+    for i in range(nframe+1,239):
         candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i] 
-        if len(candidates)==1:
-                return candidates[0]
+        next_label_frame = experiment.arm_tracker.next_cell(i,next_label)
         if next_label_frame==-1:
             return -1
+        if len(candidates)==1:
+                return candidates[0]
         else:
             next_label = next_label_frame
     return -1
@@ -603,6 +581,7 @@ def assemble_complex_trajectories(complex_trajectory,z,list_of_raccomodated):
     """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
     z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
     l,k = list_of_raccomodated.pop(z)
+    print k,len(raco_before)
     traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
     if len(complex_trajectory)==0:
         traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
@@ -649,27 +628,29 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
             
             if previous=='trajectory':
                 #looks after
-                index_next1,index_next_2,_ = comp_traj[i+1]
-                next_traj = experiment.trajectories[index_next1][index_next_2]
-                stop_frame = next_traj.beginning
+                stop_frame = 239
+                if i!=len(comp_traj)-1:
+                    index_next1,index_next_2,_ = comp_traj[i+1]
+                    next_traj = experiment.trajectories[index_next1][index_next_2]
+                    stop_frame = next_traj.beginning
                 
                 last_frame = comp_traj[i-1].end
                 next_frame = last_frame+1
                 label = elt[2]
-                print "in tuple thiny"
-                while next_frame<stop_frame:
+                print "in tuple thiny, label:",label
+                while next_frame<=stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
                      
                      img = m.open_frame(path_im,next_frame+1)
                      arms = m.open_frame(path_arm,next_frame+1)
                      mask = (arms==(label+1)).astype(np.uint8)*255
-                     print label
+                     print "label",label
                      label = experiment.arm_tracker.next_cell(next_frame,label)
                      next_frame+=1
                      overlaid = m.cv_overlay_mask2image(mask,img,"red")
                      cv2.imshow("Trajectory",overlaid)
                      cv2.waitKey(wait)
         else:
-            
+            print "normal trjaectory"
             cells_list = elt.cells        
             for cell in cells_list:
                 frame_number = cell.frame_number+1
@@ -688,7 +669,7 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
     cv2.destroyAllWindows()
 
 
-comp_traj = total_merged_trajectories[7]
+comp_traj = total_merged_trajectories[11]
 show_complex_trajectory(comp_traj,experiment2,0)
 
 def process_mergings(mergings):
