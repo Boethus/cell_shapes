@@ -101,7 +101,8 @@ class Trajectory(object):
                 return
     def __eq__(self,other_traj):
         """overloading operator ="""
-        return self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body
+        return (self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body)
+    
 def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
     cells_list = traj.cells
     for cell in cells_list:
@@ -552,21 +553,20 @@ experiment2.save()
 """
 experiment2.load()
 raco_before,raco_after=experiment2.trajectory_racomodation()
-def raccomodate_after_to_before(frame,label,number,before_raccomodations,experiment):
+"""error is here"""
+def raccomodate_after_to_before(index1,index2,number,before_raccomodations,experiment):
     """returns the index in before_raccomodation corresponding to the tuple
     (frame,label,number) in after_raccomodation"""
-    traj = experiment.trajectories[frame][label]
+    traj = experiment.trajectories[index1][index2]
     nframe = traj.end
     next_label = number
     for i in range(nframe+1,239):
-        candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i] 
-        next_label_frame = experiment.arm_tracker.next_cell(i,next_label)
-        if next_label_frame==-1:
+        candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i+1] 
+        next_label = experiment.arm_tracker.next_cell(i,next_label)
+        if next_label==-1:
             return -1
         if len(candidates)==1:
                 return candidates[0]
-        else:
-            next_label = next_label_frame
     return -1
 list_of_raccomodated = []
 for i,(frame,label,number) in enumerate(raco_after):
@@ -577,24 +577,24 @@ for i,(frame,label,number) in enumerate(raco_after):
 #list of raco : after,before
 #eah consist of (index_traj_1,index_traj_2,label_of_new_element
 
-def assemble_complex_trajectories(complex_trajectory,z,list_of_raccomodated):
+def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom):
     """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
     z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
-    l,k = list_of_raccomodated.pop(z)
-    print k,len(raco_before)
+    l,k = list_of_raccom.pop(z)
     traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
     if len(complex_trajectory)==0:
         traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
+        complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
     else:
-        traj0 = complex_trajectory[-1]
-    complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
+        complex_trajectory.extend([raco_after[l],raco_before[k],traj1])
+    
     for l_prime, (i1,i2,label) in enumerate(raco_after):
         #Find if there is a racomodation after
-        if traj0==experiment2.trajectories[i1][i2]:
+        if traj1==experiment2.trajectories[i1][i2]:
             #Find if this raccomoadtion can itself be raccomodated
-            candidates = [i for i,(x,y) in enumerate(list_of_raccomodated) if x==l_prime]
+            candidates = [i for i,(x,y) in enumerate(list_of_raccom) if x==l_prime]
             if len(candidates)==1:
-                return assemble_complex_trajectories(complex_trajectory,l_prime)
+                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom)
             else:
                 complex_trajectory.append((i1,i2,label))
                 return
@@ -638,7 +638,7 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
                 next_frame = last_frame+1
                 label = elt[2]
                 print "in tuple thiny, label:",label
-                while next_frame<=stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
+                while next_frame<stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
                      
                      img = m.open_frame(path_im,next_frame+1)
                      arms = m.open_frame(path_arm,next_frame+1)
@@ -669,7 +669,7 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
     cv2.destroyAllWindows()
 
 
-comp_traj = total_merged_trajectories[11]
+comp_traj = total_merged_trajectories[13]
 show_complex_trajectory(comp_traj,experiment2,0)
 
 def process_mergings(mergings):
