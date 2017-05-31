@@ -508,13 +508,17 @@ def w_hungarian(prev_centroids,next_centroids,max_distance=50):
     for i in range(xs.size):
         correspondance_list.append( (xs[i],ys[i]) )
     apparition_list = [] 
+    elements_to_remove = []  
     for i, coords in enumerate(correspondance_list):
         if cost_matrix[coords]>max_distance**2:
-            if coords[0]<len(xs0):
+            if coords[0]<len(xs0):   #the left element exists
                 correspondance_list[i] = (coords[0],-1)
-            if coords[1]<len(xs1):
+            else:   #the left element does not exists
+                elements_to_remove.append(i)
+            if coords[1]<len(xs1):   #Add the right element only if it exists.
                 apparition_list.append((-1,coords[1]))
-                
+    for j in range(len(elements_to_remove)):
+        correspondance_list.pop(elements_to_remove[-(j+1)])
     correspondance_list.extend(apparition_list)
     return correspondance_list
 
@@ -579,11 +583,12 @@ class Tracker(object):
     
     def prev_cell(self,frame,label):
         """Finds for the cell label in frame, the label of the same cell in the previous cell"""
-        elements = [x for x,y in self.correspondance_lists[frame] if y==label]
+        elements = [x for x,y in self.correspondance_lists[frame-1] if y==label]
         
-        if frame>len(self.correspondance_lists) or frame<0:
+        if frame>len(self.correspondance_lists)+1 or frame<1:
             raise ValueError('Trying to access an element outside the video range')
         if len(elements)>1:
+            print elements
             raise IndexError('Tracker found more than one match for label '+str(label)+' in frame '+str(frame))
         if len(elements)==0:
             raise IndexError('Tracker could not find any match for label '+str(label)+' in frame '+str(frame))

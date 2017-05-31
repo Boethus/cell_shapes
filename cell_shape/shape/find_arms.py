@@ -258,6 +258,7 @@ class Experiment(object):
     
         self.apparitions_events = []
         self.disparition_events=[]
+        
     def segmentStack(self):
         """Segments every element in the stack"""
         if not os.path.isdir(self.body_path):
@@ -311,7 +312,7 @@ class Experiment(object):
             self.body_tracker = pickle.load(out)
         with open('track_arms.pkl','rb') as out:
             self.arm_tracker = pickle.load(out)     
-            
+
     def assign_arm(self):
         """Assigns each arm to a center. Returns a list of lists, 
         for each arm in each time frame"""
@@ -514,13 +515,16 @@ class Experiment(object):
             cv2.imwrite(os.path.join(new_path,str(nframe+1)+".png"),frame)
         return clustering_matrix
     
-    def find_arm_trajectory(self,frame,label):
-        """Given an arm, returns all its indexes over diferent frames"""
+    def find_trajectory(self,frame,label,arm=True):
+        """Given an arm or a cell, returns all its indexes over different frames"""
         before_indices = []
         before_cells = []
         prev_cell = label
-        for i in range(1,frame):
-            prev_cell = self.arm_tracker.prev_cell(frame-i,prev_cell)
+        for i in range(frame):
+            if arm:
+                prev_cell = self.arm_tracker.prev_cell(frame-i,prev_cell)
+            else:
+                prev_cell = self.body_tracker.prev_cell(frame-i,prev_cell)
             if prev_cell==-1:
                 break
             before_indices.append(frame-i)
@@ -532,7 +536,10 @@ class Experiment(object):
         after_cells = []
         next_cell = label
         for i in range(frame,self.n_frames):
-            next_cell = self.arm_tracker.next_cell(i,next_cell)
+            if arm:
+                next_cell = self.arm_tracker.next_cell(i,next_cell)
+            else:
+                next_cell = self.body_tracker.next_cell(i,next_cell)
             if next_cell==-1:
                 break
             after_indices.append(i+1)
@@ -660,14 +667,6 @@ for i in range(len(list_of_racc_disposable)):
     assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable)
     total_merged_trajectories.append(comp_traj)
 
-
-
-
-
-comp_traj = total_merged_trajectories[13]
-show_complex_trajectory(comp_traj,experiment2,50)
-
-print experiment2.find_arm_trajectory(5,7)
 def process_mergings(mergings):
     path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
     for i in range(241):
@@ -723,70 +722,56 @@ def find_arm_in_frame(frame,label,experiment):
 
 def assign_unsure_arm(frame,label,experiment):
     """Gets the trajectory of each arm in unsure_list and if """
-    frame_arr,labels_arr = experiment.find_arm_trajectory(frame,label)
+    frame_arr,labels_arr = experiment.find_trajectory(frame,label,arm=True)
+    print frame_arr
+    print labels_arr
     types = []   #contains the type of each earm tracked: sure,unsure,free
     bodies = []
     for u,v in zip(frame_arr,labels_arr):
         arm_type,cell_body = find_arm_in_frame(u,v,experiment)
         types.append(arm_type)
         bodies.append(cell_body)
-    print types,bodies
+        
     if "free" in types:
-        print "free in types"
-        #Then the whole arm is free
-        for u,v,w,bod in zip(frame_arr,labels_arr,types,bodies):
-            if w=="unsure":
-                candidates = [index for index,(lab,_) in enumerate(experiment.unsure_arms_list[u]) if lab==v]
-                if len(candidates)!=1:
-                    raise IndexError('too many matches found in usure_arms_list')
-                candidates=candidates[0]
-                experiment.unsure_arms_list[u].pop(candidates)
-                experiment.free_arms_list[u].append(v)
-            if w=="sure":
-                index = [ind for ind,arm_label in enumerate(experiment.arms_list[u][bod]) if arm_label==v]
-                if len(index)!=1:
-                    raise IndexError('too many matches found in arms_list')
-                experiment.arms_list[u][bod].pop(index[0])
-                experiment.free_arms_list[u].append(v)
-    elif "sure" in types:
-        print "sure in typeee"
+        #If it is free at one point we can't say yet
+        return
+    print types
+    print bodies
+    print labels_arr
+    if "sure" in types:
         frame_arr = np.asarray(frame_arr)
         labels_arr = np.asarray(labels_arr)        
         where_sure = np.asarray([x=="sure" for x in types])
         frames_sure = frame_arr[where_sure]
         bodies_sure = np.asarray(bodies)[where_sure]
-        same_cell_body = True  #Boolean True if all the "sure" events correspond to the same body
-        if bodies_sure.size>1:
-            #Means that it is being single several times
-             for k in range(frames_sure.size-1):
-                 l1 = bodies_sure[k]
-                 f1 = frames_sure[k]
-                 l2 = bodies_sure[k+1]
-                 f2 = frames_sure[k+1]
-                 
-                 for a in range(f1,f2):
-                     l1 = experiment.body_tracker.next_cell(a,l1)
-                 same_cell_body = same_cell_body and l2==l1
-                 print "sure in type"
-        if same_cell_body:
-            print "same cell body"
-            #l1 and f1 are the first label and frame where we are sure
-            l1 = bodies_sure[0]
-            f1 = frames_sure[0]
-            f0 = frame_arr[0]
-            for a in range(f1-f0):
-                l1 = experiment.body_tracker.previous_cell(f1,l1)
-                f1-=1
-            for u,v,w,bod in zip(frame_arr,labels_arr,types,bodies):
-                if w=="unsure":
-                    candidates = [index for index,(lab,_) in enumerate(experiment.unsure_arms_list[u])]
-                    if len(candidates)!=1:
-                        raise IndexError('too many matches found')
-                    candidates=candidates[0]
-                    experiment.unsure_arms_list[u].pop(candidates)
-                    experiment.free_arms_list[u].append(l1)
-                l1=experiment.body_tracker.next_cell(u,l1)
         
+        where_unsure = np.asarray([x=="unsure" for x in types])
+        frames_unsure = frame_arr[where_unsure]
+        labels_unsure = labels_arr[where_unsure]
+        #For each frame unsure, gets the closest sure frame
+        #Then looks for the corresponding cell body
+        for fr,lab in zip(frames_unsure,labels_unsure):
+            closest_sure_frame = np.abs(frames_sure-fr)
+            closest_sure_frame = frames_sure[closest_sure_frame==np.min(closest_sure_frame)]
+            closest_sure_frame = closest_sure_frame[0]
+            closest_body = bodies_sure[frames_sure==closest_sure_frame][0]
+            indices,cells = experiment.find_trajectory(closest_sure_frame,closest_body,arm=False)
+            indices = np.asarray(indices)
+            cells = np.asarray(cells)
+            new_label = cells[indices==fr][0]
+            print indices
+            print cells
+            print "frame",fr,"new label:",new_label,"closest frame:",closest_sure_frame
+            candidates = [(j,list_joints) for j,(labb,list_joints) in enumerate(experiment.unsure_arms_list[fr]) if labb==lab]
+            if len(candidates)!=1:
+                raise IndexError('cant find an appropriate number of candidates')
+            index,list_to_check = candidates[0]
+            if not new_label in list_to_check:
+                print "no comprendo la correspondencia"
+            experiment.unsure_arms_list[fr].pop(index)
+            experiment.arms_list[fr][new_label].append(lab)
+            
+assign_unsure_arm(5,112,experiment2)
 #-------------------------End script----------------------------------------------##
 #Frame numbers start from 0. Indexes from 1!!!
 disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
