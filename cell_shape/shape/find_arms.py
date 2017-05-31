@@ -22,7 +22,7 @@ import scipy.ndimage as ndi
 import cv2
 import matplotlib.pyplot as plt
 import glob
-import platform
+from screeninfo import get_monitors
 import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
 plt.close('all')
@@ -104,6 +104,7 @@ class Trajectory(object):
         return (self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body)
     
 def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
+    """Displays on screen a temporal trajectory traj."""
     cells_list = traj.cells
     for cell in cells_list:
         frame_number = cell.frame_number+1
@@ -121,7 +122,65 @@ def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
         cv2.waitKey(wait)
     cv2.destroyAllWindows()
 
-
+def show_complex_trajectory(comp_traj,experiment,wait=50):
+    """Displays a complex trajectory"""
+    path_im = experiment.path
+    path_body = experiment.body_path
+    path_arm = experiment.arm_path
+    previous = 'trajectory'
+    
+    monitor = get_monitors()[0]
+    width = monitor.width
+    height = monitor.height
+    cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('Trajectory', width, height)
+    for i,elt in enumerate(comp_traj):
+        if type(elt)==tuple:
+            #raccomodation
+            if i>0:
+                if type(comp_traj[i-1])==tuple:
+                    previous='tuple'
+                else:
+                    previous='trajectory'
+            
+            if previous=='trajectory':
+                #looks after
+                stop_frame = 239
+                if i!=len(comp_traj)-1:
+                    index_next1,index_next_2,_ = comp_traj[i+1]
+                    next_traj = experiment.trajectories[index_next1][index_next_2]
+                    stop_frame = next_traj.beginning
+                
+                last_frame = comp_traj[i-1].end
+                next_frame = last_frame+1
+                label = elt[2]
+                while next_frame<stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
+                     
+                     img = m.open_frame(path_im,next_frame+1)
+                     arms = m.open_frame(path_arm,next_frame+1)
+                     mask = (arms==(label+1)).astype(np.uint8)*255
+                     label = experiment.arm_tracker.next_cell(next_frame,label)
+                     next_frame+=1
+                     overlaid = m.cv_overlay_mask2image(mask,img,"red")
+                     cv2.imshow("Trajectory",overlaid)
+                     cv2.waitKey(wait)
+        else:
+            cells_list = elt.cells        
+            for cell in cells_list:
+                frame_number = cell.frame_number+1
+                img = m.open_frame(path_im,frame_number)
+                body = m.open_frame(path_body,frame_number)
+                arms = m.open_frame(path_arm,frame_number)
+                mask = (body==(cell.body+1)).astype(np.uint8)*255
+                mask_arms = np.zeros(mask.shape,dtype=np.uint8)
+                for arm in cell.arms:
+                    mask_arms+=(arms==(arm+1)).astype(np.uint8)*255
+                overlaid = m.cv_overlay_mask2image(mask,img,"green")
+                overlaid = m.cv_overlay_mask2image(mask_arms,overlaid,"red")
+                cv2.imshow("Trajectory",overlaid)
+                
+                cv2.waitKey(wait)
+    cv2.destroyAllWindows()
 
 def morphology_split(frame,label,number,max_labels_in_frame):
     """Splits the object with label in frame in number pieces"""
@@ -187,6 +246,7 @@ class Experiment(object):
         self.arm_tracker = []
         self.body_tracker=[]
  
+        #arms_list[i][j] gives the arms of cell j in frame i
         self.arms_list=[]
         #arms unsure is a list of size n_frames. unsure_arms_list[i] is the list
         #of arms associated with all the possible nucleus they come from
@@ -258,7 +318,7 @@ class Experiment(object):
         arms_assignment_list=[]
         arm_unsure_list = []
         free_arms_list=[]
-        for i in range(1,241):
+        for i in range(1,self.n_frames+1):
             print "iteration",i
             arm_center_corresp=[]
             arm_unsure_frame=[]
@@ -275,11 +335,11 @@ class Experiment(object):
                 if candidates[0]==0:
                     candidates= candidates[1:]   #We dont keep zero as it is background
                 if candidates.size==0:
-                    free_arms_frame.append(arm_label)
+                    free_arms_frame.append(arm_label-1)
                 elif candidates.size==1:
                     arm_center_corresp.append( (arm_label-1,candidates[0]-1) )
                 else:
-                    arm_unsure_frame.append( (arm_label,[x-1 for x in candidates]) )
+                    arm_unsure_frame.append( (arm_label-1,[x-1 for x in candidates]) )
                     
             arms_assignment_list.append(arm_center_corresp)
             arm_unsure_list.append(arm_unsure_frame)
@@ -459,7 +519,7 @@ class Experiment(object):
         before_indices = []
         before_cells = []
         prev_cell = label
-        for i in range(1,frame+1):
+        for i in range(1,frame):
             prev_cell = self.arm_tracker.prev_cell(frame-i,prev_cell)
             if prev_cell==-1:
                 break
@@ -475,7 +535,7 @@ class Experiment(object):
             next_cell = self.arm_tracker.next_cell(i,next_cell)
             if next_cell==-1:
                 break
-            after_indices.append(i)
+            after_indices.append(i+1)
             after_cells.append(next_cell)
         before_cells.append(label)
         before_cells.extend(after_cells)
@@ -524,7 +584,7 @@ path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
-def de_mess_labels(path_centers):
+def redefine_labels(path_centers):
     """In case an index disappeared"""
     for i in range(0,241):
         print i
@@ -539,18 +599,9 @@ def de_mess_labels(path_centers):
             mm=np.max(frame)
             frame[frame==mm]=elts
         cv2.imwrite(os.path.join(path_centers,str(i+1)+".png"),frame)
-#de_mess_labels(path_centers)
+#redefine_labels(path_centers)
 
 experiment2 = Experiment(path,path_centers,path_arms)
-"""
-experiment2.track_arms_and_centers()
-
-experiment2.load_arms_and_centers()
-experiment2.assign_arm()
-experiment2.compute_all_trajectories()
-experiment2.classify_events()
-experiment2.save()
-"""
 experiment2.load()
 raco_before,raco_after=experiment2.trajectory_racomodation()
 """error is here"""
@@ -610,68 +661,13 @@ for i in range(len(list_of_racc_disposable)):
     total_merged_trajectories.append(comp_traj)
 
 
-def show_complex_trajectory(comp_traj,experiment,wait=50):
-    """Displays a complex trajectory"""
-    path_im = experiment.path
-    path_body = experiment.body_path
-    path_arm = experiment.arm_path
-    previous = 'trajectory'
-    for i,elt in enumerate(comp_traj):
-        print i
-        if type(elt)==tuple:
-            #raccomodation
-            if i>0:
-                if type(comp_traj[i-1])==tuple:
-                    previous='tuple'
-                else:
-                    previous='trajectory'
-            
-            if previous=='trajectory':
-                #looks after
-                stop_frame = 239
-                if i!=len(comp_traj)-1:
-                    index_next1,index_next_2,_ = comp_traj[i+1]
-                    next_traj = experiment.trajectories[index_next1][index_next_2]
-                    stop_frame = next_traj.beginning
-                
-                last_frame = comp_traj[i-1].end
-                next_frame = last_frame+1
-                label = elt[2]
-                print "in tuple thiny, label:",label
-                while next_frame<stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
-                     
-                     img = m.open_frame(path_im,next_frame+1)
-                     arms = m.open_frame(path_arm,next_frame+1)
-                     mask = (arms==(label+1)).astype(np.uint8)*255
-                     print "label",label
-                     label = experiment.arm_tracker.next_cell(next_frame,label)
-                     next_frame+=1
-                     overlaid = m.cv_overlay_mask2image(mask,img,"red")
-                     cv2.imshow("Trajectory",overlaid)
-                     cv2.waitKey(wait)
-        else:
-            print "normal trjaectory"
-            cells_list = elt.cells        
-            for cell in cells_list:
-                frame_number = cell.frame_number+1
-                img = m.open_frame(path_im,frame_number)
-                body = m.open_frame(path_body,frame_number)
-                arms = m.open_frame(path_arm,frame_number)
-                mask = (body==(cell.body+1)).astype(np.uint8)*255
-                mask_arms = np.zeros(mask.shape,dtype=np.uint8)
-                for arm in cell.arms:
-                    mask_arms+=(arms==(arm+1)).astype(np.uint8)*255
-                overlaid = m.cv_overlay_mask2image(mask,img,"green")
-                overlaid = m.cv_overlay_mask2image(mask_arms,overlaid,"red")
-                cv2.imshow("Trajectory",overlaid)
-                
-                cv2.waitKey(wait)
-    cv2.destroyAllWindows()
+
 
 
 comp_traj = total_merged_trajectories[13]
-show_complex_trajectory(comp_traj,experiment2,0)
+show_complex_trajectory(comp_traj,experiment2,50)
 
+print experiment2.find_arm_trajectory(5,7)
 def process_mergings(mergings):
     path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
     for i in range(241):
@@ -699,6 +695,99 @@ cells_bodies_in_best_traj = [x.body for x in best_trajectory.cells]
 show_trajectory(best_trajectory,path,path_centers,path_arms,100)
 """
 
+def find_arm_in_frame(frame,label,experiment):
+    """for arm with number label in frame, determines if it is bound to one cell
+    only, to several or if it is free"""
+    
+    type_of_arm = "unsure"
+    
+    #1: check if it is bound to only one frame
+    list_of_arms = experiment.arms_list[frame]
+    label_in_list = [i for i,x in enumerate(list_of_arms) if label in x]
+    if len(label_in_list)>1:
+        print "error too many matches in find_arm_in_frame"
+    if len(label_in_list)==1:
+        cell_body = label_in_list[0]
+        type_of_arm = "sure"
+        return type_of_arm,cell_body
+    #2: check if it is a free arm
+    if label in experiment.free_arms_list[frame]:
+        type_of_arm = "free"
+        return type_of_arm,-1
+    #3 Verifies that it is in unsure list
+    candidates_unsure = [(x, body_list) for x,body_list in experiment.unsure_arms_list[frame] if x==label]
+    if len(candidates_unsure)==1:
+        type_of_arm = "unsure"
+        return type_of_arm,-1
+    raise ValueError('Arm not found')
+
+def assign_unsure_arm(frame,label,experiment):
+    """Gets the trajectory of each arm in unsure_list and if """
+    frame_arr,labels_arr = experiment.find_arm_trajectory(frame,label)
+    types = []   #contains the type of each earm tracked: sure,unsure,free
+    bodies = []
+    for u,v in zip(frame_arr,labels_arr):
+        arm_type,cell_body = find_arm_in_frame(u,v,experiment)
+        types.append(arm_type)
+        bodies.append(cell_body)
+    print types,bodies
+    if "free" in types:
+        print "free in types"
+        #Then the whole arm is free
+        for u,v,w,bod in zip(frame_arr,labels_arr,types,bodies):
+            if w=="unsure":
+                candidates = [index for index,(lab,_) in enumerate(experiment.unsure_arms_list[u]) if lab==v]
+                if len(candidates)!=1:
+                    raise IndexError('too many matches found in usure_arms_list')
+                candidates=candidates[0]
+                experiment.unsure_arms_list[u].pop(candidates)
+                experiment.free_arms_list[u].append(v)
+            if w=="sure":
+                index = [ind for ind,arm_label in enumerate(experiment.arms_list[u][bod]) if arm_label==v]
+                if len(index)!=1:
+                    raise IndexError('too many matches found in arms_list')
+                experiment.arms_list[u][bod].pop(index[0])
+                experiment.free_arms_list[u].append(v)
+    elif "sure" in types:
+        print "sure in typeee"
+        frame_arr = np.asarray(frame_arr)
+        labels_arr = np.asarray(labels_arr)        
+        where_sure = np.asarray([x=="sure" for x in types])
+        frames_sure = frame_arr[where_sure]
+        bodies_sure = np.asarray(bodies)[where_sure]
+        same_cell_body = True  #Boolean True if all the "sure" events correspond to the same body
+        if bodies_sure.size>1:
+            #Means that it is being single several times
+             for k in range(frames_sure.size-1):
+                 l1 = bodies_sure[k]
+                 f1 = frames_sure[k]
+                 l2 = bodies_sure[k+1]
+                 f2 = frames_sure[k+1]
+                 
+                 for a in range(f1,f2):
+                     l1 = experiment.body_tracker.next_cell(a,l1)
+                 same_cell_body = same_cell_body and l2==l1
+                 print "sure in type"
+        if same_cell_body:
+            print "same cell body"
+            #l1 and f1 are the first label and frame where we are sure
+            l1 = bodies_sure[0]
+            f1 = frames_sure[0]
+            f0 = frame_arr[0]
+            for a in range(f1-f0):
+                l1 = experiment.body_tracker.previous_cell(f1,l1)
+                f1-=1
+            for u,v,w,bod in zip(frame_arr,labels_arr,types,bodies):
+                if w=="unsure":
+                    candidates = [index for index,(lab,_) in enumerate(experiment.unsure_arms_list[u])]
+                    if len(candidates)!=1:
+                        raise IndexError('too many matches found')
+                    candidates=candidates[0]
+                    experiment.unsure_arms_list[u].pop(candidates)
+                    experiment.free_arms_list[u].append(l1)
+                l1=experiment.body_tracker.next_cell(u,l1)
+        
+#-------------------------End script----------------------------------------------##
 #Frame numbers start from 0. Indexes from 1!!!
 disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
 disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
@@ -744,3 +833,23 @@ def test_prediction(experiment):
         (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
         print "arm:",p1,l1,"body",p2,l2
 
+#test find arm in frame:
+def test_find_arm_in_frame(experiment2):
+    for i in range(experiment2.n_frames):
+        for j,liszt in enumerate(experiment2.arms_list[i]):
+            for label in liszt:
+                typp,cell = find_arm_in_frame(i,label,experiment2)
+                if typp!='sure' and cell!=j:
+                    print "wrong finding"
+                    break
+        for label in experiment2.free_arms_list[i]:
+            typp,cell = find_arm_in_frame(i,label,experiment2)
+            if typp!='free':
+                print "error free",i,label,typp
+                break
+        for label,osef_list in experiment2.unsure_arms_list[i]:
+            typp,cell = find_arm_in_frame(i,label,experiment2)
+            if typp!='unsure':
+                print "error unsure"
+                break
+    print "test passed"
