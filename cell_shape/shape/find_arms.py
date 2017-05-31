@@ -527,7 +527,7 @@ class Experiment(object):
                 prev_cell = self.body_tracker.prev_cell(frame-i,prev_cell)
             if prev_cell==-1:
                 break
-            before_indices.append(frame-i)
+            before_indices.append(frame-i-1)
             before_cells.append(prev_cell)
         before_cells.reverse()
         before_indices.reverse()
