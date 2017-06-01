@@ -25,6 +25,8 @@ import glob
 from screeninfo import get_monitors
 import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
+import process_trajectories as pt
+
 plt.close('all')
 
 def check_frame(nr,liste):
@@ -407,6 +409,7 @@ def find_arm_in_frame(frame,label,experiment):
 
 def assign_unsure_arm(frame,label,experiment):
     """Gets the trajectory of each arm in unsure_list and if """
+    verbose = False
     frame_arr,labels_arr = experiment.find_trajectory(frame,label,arm=True)
     types = []   #contains the type of each earm tracked: sure,unsure,free
     bodies = []
@@ -414,17 +417,21 @@ def assign_unsure_arm(frame,label,experiment):
         arm_type,cell_body = find_arm_in_frame(u,v,experiment)
         types.append(arm_type)
         bodies.append(cell_body)
-    print types
+    if verbose:
+        print types
     if "free" in types:
         #If it is free at one point we can't say yet
-        return
+        pass
+        #return
     if "sure" in types:
         frame_arr = np.asarray(frame_arr)
         labels_arr = np.asarray(labels_arr)        
         where_sure = np.asarray([x=="sure" for x in types])
         frames_sure = frame_arr[where_sure]
         bodies_sure = np.asarray(bodies)[where_sure]
-        
+        if verbose:
+            print frames_sure
+            print bodies_sure
         where_unsure = np.asarray([x=="unsure" for x in types])
         frames_unsure = frame_arr[where_unsure]
         labels_unsure = labels_arr[where_unsure]
@@ -435,7 +442,8 @@ def assign_unsure_arm(frame,label,experiment):
             closest_sure_frame = frames_sure[closest_sure_frame==np.min(closest_sure_frame)]
             closest_sure_frame = closest_sure_frame[0]
             closest_body = bodies_sure[frames_sure==closest_sure_frame][0]
-            print "closest association:",closest_sure_frame,closest_body
+            if verbose:
+                print "closest association:",closest_sure_frame,closest_body
             indices,cells = experiment.find_trajectory(closest_sure_frame,closest_body,arm=False)
             indices = np.asarray(indices)
             cells = np.asarray(cells)
@@ -450,6 +458,7 @@ def assign_unsure_arm(frame,label,experiment):
                     print "no comprendo la correspondencia"
                 else:
                     experiment.unsure_arms_list[fr].pop(index)
+                    print "in frame",fr,"associating",lab,"to body",new_label
                     experiment.arms_list[fr][new_label].append(lab)
                     
 def process_unsure_arms(experiment):
@@ -606,6 +615,7 @@ class Experiment(object):
     def compute_all_trajectories(self):
         """Calculates all the trajectories, removes them from self.body_tracker
         and adds them in the list self.trajectories"""
+        self.trajectories = []
         for frame_nb in range(self.n_frames-1):
             trajectory_list = self.compute_trajectories_in_frame(frame_nb)
             self.trajectories.append(trajectory_list)
@@ -861,19 +871,21 @@ def loadClassif():
     return classification
 
 #Find all trajectories which are not complex
+def find_simple_trajectories(experiment2,complex_trajectories):
 #1: find all trajectories involved in a complex one
-trajectories_in_complex = []
-for comp_traj in complex_trajectories:
-    for elt in comp_traj:
-        if type(elt)!=tuple:  #Case it is a trajectory
-            trajectories_in_complex.append(elt)
-
-trajectories_remaining = []  #This list will contain the trajectories which have not been processed yet
-for traj_list in experiment2.trajectories:
-    print "new frame"
-    for traj in traj_list:
-        if not traj in trajectories_in_complex:
-            trajectories_remaining.append(traj)
+    trajectories_in_complex = []
+    for comp_traj in complex_trajectories:
+        for elt in comp_traj:
+            if type(elt)!=tuple:  #Case it is a trajectory
+                trajectories_in_complex.append(elt)
+    
+    trajectories_remaining = []  #This list will contain the trajectories which have not been processed yet
+    for traj_list in experiment2.trajectories:
+        print "new frame"
+        for traj in traj_list:
+            if not traj in trajectories_in_complex:
+                trajectories_remaining.append(traj)
+    return trajectories_remaining
             
 def classify_trajectory(traj):
     """Displays traj and prompts the user about what to do"""
