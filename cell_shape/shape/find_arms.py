@@ -101,8 +101,11 @@ class Trajectory(object):
         """overloading operator ="""
         return (self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body)
     
-def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
+def show_trajectory(traj,experiment,wait=50):
     """Displays on screen a temporal trajectory traj."""
+    path_im = experiment.path
+    path_body = experiment.body_path
+    path_arm = experiment.arm_path
     cells_list = traj.cells
     for cell in cells_list:
         frame_number = cell.frame_number+1
@@ -118,7 +121,7 @@ def show_trajectory(traj,path_im,path_body,path_arm,wait=50):
         cv2.imshow("Trajectory",overlaid)
         
         cv2.waitKey(wait)
-    cv2.destroyAllWindows()
+    #cv2.destroyAllWindows()
 
 def show_complex_trajectory(comp_traj,experiment,wait=50):
     """Displays a complex trajectory"""
@@ -178,8 +181,59 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
                 cv2.imshow("Trajectory",overlaid)
                 
                 cv2.waitKey(wait)
-    cv2.destroyAllWindows()
+                
+    #cv2.destroyAllWindows()
+    
 
+def test_prediction(experiment):
+    disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
+    disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
+    apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1)]   #Frame, cell appearing, n of cluster it belonged before
+    apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
+    apparition_from_arm_to_body_exterior = [(2,85),(20,56)]
+    
+    print "disparitions: from noyau to arm"
+    for (u,v) in disparitions_from_nucl_to_arm:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
+        print "arm:",p1,l1,"body",p2,l2
+    print "disparitions: fusion"
+    for (u,v,w) in disp_fusion:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
+        
+        print "arm:",p1,l1,"body",p2,l2
+        
+    print "apparitions:decluster"
+    for (u,v,w) in apparitions_decluster:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
+        print "arm:",p1,l1,"body",p2,l2
+        
+    print "apparitions:arm t body"
+    for (u,v) in apparition_from_arm_to_body:
+        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
+        print "arm:",p1,l1,"body",p2,l2
+
+#test find arm in frame:
+#-------------------Misc tests-----------------------------------
+def test_find_arm_in_frame(experiment2):
+    for i in range(experiment2.n_frames):
+        for j,liszt in enumerate(experiment2.arms_list[i]):
+            for label in liszt:
+                typp,cell = find_arm_in_frame(i,label,experiment2)
+                if typp!='sure' and cell!=j:
+                    print "wrong finding"
+                    break
+        for label in experiment2.free_arms_list[i]:
+            typp,cell = find_arm_in_frame(i,label,experiment2)
+            if typp!='free':
+                print "error free",i,label,typp
+                break
+        for label,osef_list in experiment2.unsure_arms_list[i]:
+            typp,cell = find_arm_in_frame(i,label,experiment2)
+            if typp!='unsure':
+                print "error unsure"
+                break
+    print "test passed"
+#-------Morphological operations to tell nuclei apart-----------
 def morphology_split(frame,label,number,max_labels_in_frame):
     """Splits the object with label in frame in number pieces"""
     if number<=1:
@@ -229,6 +283,40 @@ def morphology_split(frame,label,number,max_labels_in_frame):
         frame[y:y+h,x:x+w]=lab
     return success
 
+def process_mergings(mergings):
+    path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
+    for i in range(241):
+        print "process merging iteration ",i
+        centers = m.open_frame(path_centers,i+1)
+        indexes_merged = np.where(mergings[i,:]!=0)[0]
+        values_merged = np.zeros(indexes_merged.shape)
+    
+        for k,elt in enumerate(indexes_merged):
+            values_merged[k] = mergings[i,elt]
+        labels_merged = indexes_merged+1
+        out = np.zeros(centers.shape,dtype=np.int)
+        out[centers>0] = 1
+        for label,value in zip(labels_merged,values_merged):
+            if value>0:
+                out[centers==label] = value+1
+        cv2.imwrite(os.path.join(path_clusters,str(i)+".png"), out )
+        
+def redefine_labels(path_centers):
+    """In case an index disappeared"""
+    for i in range(0,241):
+        print i
+        frame = m.open_frame(path_centers,i+1)
+        elts_in_frame = np.unique(frame)
+        missing = []
+        for j in range(np.max(frame)):
+            if not j in elts_in_frame:
+                print "element missing"
+                missing.append(j)
+        for elts in missing:
+            mm=np.max(frame)
+            frame[frame==mm]=elts
+        cv2.imwrite(os.path.join(path_centers,str(i+1)+".png"),frame)
+        
 #--------------Complex trajectories----------------------------------------------
 def raccomodate_after_to_before(index1,index2,number,before_raccomodations,experiment):
     """returns the index in before_raccomodation corresponding to the tuple
@@ -244,16 +332,11 @@ def raccomodate_after_to_before(index1,index2,number,before_raccomodations,exper
         if len(candidates)==1:
                 return candidates[0]
     return -1
-list_of_raccomodated = []
-for i,(frame,label,number) in enumerate(raco_after):
-    index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
-    if index!=-1:
-        list_of_raccomodated.append((i,index))
 
 #list of raco : after,before
 #eah consist of (index_traj_1,index_traj_2,label_of_new_element
 
-def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom):
+def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom,raco_before,raco_after):
     """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
     z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
     l,k = list_of_raccom.pop(z)
@@ -270,12 +353,112 @@ def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom):
             #Find if this raccomoadtion can itself be raccomodated
             candidates = [i for i,(x,y) in enumerate(list_of_raccom) if x==l_prime]
             if len(candidates)==1:
-                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom)
+                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom,raco_before,raco_after)
             else:
                 complex_trajectory.append((i1,i2,label))
                 return
     return
 
+def get_complex_trajectories(experiment):
+    """Wraps up the different methods to get the complex trajectories in experiment"""
+    raco_before,raco_after=experiment.trajectory_racomodation()
+    
+    list_of_raccomodated = []
+    for i,(frame,label,number) in enumerate(raco_after):
+        index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
+        if index!=-1:
+            list_of_raccomodated.append((i,index))
+    
+    list_of_racc_disposable = list_of_raccomodated[:]
+    total_merged_trajectories = []  #List of complex trajectories
+    for i in range(len(list_of_racc_disposable)):
+        comp_traj = []
+        if i>=len(list_of_racc_disposable):
+            break
+        assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable,raco_before,raco_after)
+        total_merged_trajectories.append(comp_traj)
+    return total_merged_trajectories
+#----------------------Assign arm to correct nucleus-----------
+def find_arm_in_frame(frame,label,experiment):
+    """for arm with number label in frame, determines if it is bound to one cell
+    only, to several or if it is free"""
+    
+    type_of_arm = "unsure"
+    
+    #1: check if it is bound to only one frame
+    list_of_arms = experiment.arms_list[frame]
+    label_in_list = [i for i,x in enumerate(list_of_arms) if label in x]
+    if len(label_in_list)>1:
+        print "error too many matches in find_arm_in_frame"
+    if len(label_in_list)==1:
+        cell_body = label_in_list[0]
+        type_of_arm = "sure"
+        return type_of_arm,cell_body
+    #2: check if it is a free arm
+    if label in experiment.free_arms_list[frame]:
+        type_of_arm = "free"
+        return type_of_arm,-1
+    #3 Verifies that it is in unsure list
+    candidates_unsure = [(x, body_list) for x,body_list in experiment.unsure_arms_list[frame] if x==label]
+    if len(candidates_unsure)==1:
+        type_of_arm = "unsure"
+        return type_of_arm,-1
+    raise ValueError('Arm not found')
+
+def assign_unsure_arm(frame,label,experiment):
+    """Gets the trajectory of each arm in unsure_list and if """
+    frame_arr,labels_arr = experiment.find_trajectory(frame,label,arm=True)
+    types = []   #contains the type of each earm tracked: sure,unsure,free
+    bodies = []
+    for u,v in zip(frame_arr,labels_arr):
+        arm_type,cell_body = find_arm_in_frame(u,v,experiment)
+        types.append(arm_type)
+        bodies.append(cell_body)
+    print types
+    if "free" in types:
+        #If it is free at one point we can't say yet
+        return
+    if "sure" in types:
+        frame_arr = np.asarray(frame_arr)
+        labels_arr = np.asarray(labels_arr)        
+        where_sure = np.asarray([x=="sure" for x in types])
+        frames_sure = frame_arr[where_sure]
+        bodies_sure = np.asarray(bodies)[where_sure]
+        
+        where_unsure = np.asarray([x=="unsure" for x in types])
+        frames_unsure = frame_arr[where_unsure]
+        labels_unsure = labels_arr[where_unsure]
+        #For each frame unsure, gets the closest sure frame
+        #Then looks for the corresponding cell body
+        for fr,lab in zip(frames_unsure,labels_unsure):
+            closest_sure_frame = np.abs(frames_sure-fr)
+            closest_sure_frame = frames_sure[closest_sure_frame==np.min(closest_sure_frame)]
+            closest_sure_frame = closest_sure_frame[0]
+            closest_body = bodies_sure[frames_sure==closest_sure_frame][0]
+            print "closest association:",closest_sure_frame,closest_body
+            indices,cells = experiment.find_trajectory(closest_sure_frame,closest_body,arm=False)
+            indices = np.asarray(indices)
+            cells = np.asarray(cells)
+            #If trajectory of body goes dar enough 
+            if fr in indices:
+                new_label = cells[indices==fr][0]
+                candidates = [(j,list_joints) for j,(labb,list_joints) in enumerate(experiment.unsure_arms_list[fr]) if labb==lab]
+                if len(candidates)!=1:
+                    raise IndexError('cant find an appropriate number of candidates')
+                index,list_to_check = candidates[0]
+                if not new_label in list_to_check:
+                    print "no comprendo la correspondencia"
+                else:
+                    experiment.unsure_arms_list[fr].pop(index)
+                    experiment.arms_list[fr][new_label].append(lab)
+                    
+def process_unsure_arms(experiment):
+    """Assigns the unsure arms based on temporal information"""
+    for i in range(experiment.n_frames):
+        list_of_arms = [x for x,y in experiment.unsure_arms_list[i]]
+        for arm in list_of_arms:
+            assign_unsure_arm(i,arm,experiment)
+            
 #--------------Class Experiment--------------------------------------------------
 class Experiment(object):
     """Class doing all the job of an expreiment: sgmentation, tracking
@@ -638,204 +821,78 @@ path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
 
-def redefine_labels(path_centers):
-    """In case an index disappeared"""
-    for i in range(0,241):
-        print i
-        frame = m.open_frame(path_centers,i+1)
-        elts_in_frame = np.unique(frame)
-        missing = []
-        for j in range(np.max(frame)):
-            if not j in elts_in_frame:
-                print "element missing"
-                missing.append(j)
-        for elts in missing:
-            mm=np.max(frame)
-            frame[frame==mm]=elts
-        cv2.imwrite(os.path.join(path_centers,str(i+1)+".png"),frame)
+
 #redefine_labels(path_centers)
 
 experiment2 = Experiment(path,path_centers,path_arms)
 experiment2.load()
-raco_before,raco_after=experiment2.trajectory_racomodation()
 
-list_of_racc_disposable = list_of_raccomodated[:]
-total_merged_trajectories = []  #List of complex trajectories
-for i in range(len(list_of_racc_disposable)):
-    comp_traj = []
-    if i>=len(list_of_racc_disposable):
-        break
-    assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable)
-    total_merged_trajectories.append(comp_traj)
+complex_trajectories = get_complex_trajectories(experiment2)
 
-def process_mergings(mergings):
-    path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
-    for i in range(241):
-        print "process merging iteration ",i
-        centers = m.open_frame(path_centers,i+1)
-        indexes_merged = np.where(mergings[i,:]!=0)[0]
-        values_merged = np.zeros(indexes_merged.shape)
+
+def classify_complex_trajectory(traj):
+    """Displays traj and prompts the user about what to do"""
+    show_complex_trajectory(complex_trajectories[i],experiment2,50)
+    possible_answers = ['r','w','t','m','q','e']
+    inp = ''
+    while(not inp in possible_answers):
+        inp= raw_input("""how would you classify this image: ramified, withdrawal, transitional,
+                      motile, error (r/w/t/m/e)? Press q to see the sequence again\n""")
     
-        for k,elt in enumerate(indexes_merged):
-            values_merged[k] = mergings[i,elt]
-        labels_merged = indexes_merged+1
-        out = np.zeros(centers.shape,dtype=np.int)
-        out[centers>0] = 1
-        for label,value in zip(labels_merged,values_merged):
-            if value>0:
-                out[centers==label] = value+1
-        cv2.imwrite(os.path.join(path_clusters,str(i)+".png"), out )
+    if inp=='q':
+        inp = classify_complex_trajectory(traj)
+    return inp
+classifications = []
+for i in range(2):
+    print i
+    #cv2.destroyAllWindows()
+    traj = complex_trajectories[i]
+    inp= classify_complex_trajectory(traj)
+    if inp!='e' and inp!='q':    #otherwise it is an error
+        classifications.append((inp,traj))
+        
+def saveClassif(classification):
+    with open('classification_results.pkl','wb') as out:
+        pickle.dump(classification,out)
+        
+def loadClassif():
+    with open('classification_results.pkl','rb') as out:
+        classification = pickle.load(out)
+    return classification
 
-#process_mergings(mergings)
-"""
-trajectory_list = experiment1.compute_trajectories_in_frame(0)
-best_trajectory = trajectory_list[6]
-cells_bodies_in_best_traj = [x.body for x in best_trajectory.cells]
+#Find all trajectories which are not complex
+#1: find all trajectories involved in a complex one
+trajectories_in_complex = []
+for comp_traj in complex_trajectories:
+    for elt in comp_traj:
+        if type(elt)!=tuple:  #Case it is a trajectory
+            trajectories_in_complex.append(elt)
 
-show_trajectory(best_trajectory,path,path_centers,path_arms,100)
-"""
-
-def find_arm_in_frame(frame,label,experiment):
-    """for arm with number label in frame, determines if it is bound to one cell
-    only, to several or if it is free"""
+trajectories_remaining = []  #This list will contain the trajectories which have not been processed yet
+for traj_list in experiment2.trajectories:
+    print "new frame"
+    for traj in traj_list:
+        if not traj in trajectories_in_complex:
+            trajectories_remaining.append(traj)
+            
+def classify_trajectory(traj):
+    """Displays traj and prompts the user about what to do"""
+    show_trajectory(traj,experiment2,50)
+    possible_answers = ['r','w','t','m','q','e']
+    inp = ''
+    while(not inp in possible_answers):
+        inp= raw_input("""how would you classify this image: ramified, withdrawal, transitional,
+                      motile, error (r/w/t/m/e)? Press q to see the sequence again\n""")
     
-    type_of_arm = "unsure"
-    
-    #1: check if it is bound to only one frame
-    list_of_arms = experiment.arms_list[frame]
-    label_in_list = [i for i,x in enumerate(list_of_arms) if label in x]
-    if len(label_in_list)>1:
-        print "error too many matches in find_arm_in_frame"
-    if len(label_in_list)==1:
-        cell_body = label_in_list[0]
-        type_of_arm = "sure"
-        return type_of_arm,cell_body
-    #2: check if it is a free arm
-    if label in experiment.free_arms_list[frame]:
-        type_of_arm = "free"
-        return type_of_arm,-1
-    #3 Verifies that it is in unsure list
-    candidates_unsure = [(x, body_list) for x,body_list in experiment.unsure_arms_list[frame] if x==label]
-    if len(candidates_unsure)==1:
-        type_of_arm = "unsure"
-        return type_of_arm,-1
-    raise ValueError('Arm not found')
+    if inp=='q':
+        classify_trajectory(traj)
+    return inp
 
-def assign_unsure_arm(frame,label,experiment):
-    """Gets the trajectory of each arm in unsure_list and if """
-    frame_arr,labels_arr = experiment.find_trajectory(frame,label,arm=True)
-    types = []   #contains the type of each earm tracked: sure,unsure,free
-    bodies = []
-    for u,v in zip(frame_arr,labels_arr):
-        arm_type,cell_body = find_arm_in_frame(u,v,experiment)
-        types.append(arm_type)
-        bodies.append(cell_body)
-        
-    if "free" in types:
-        #If it is free at one point we can't say yet
-        return
-    if "sure" in types:
-        frame_arr = np.asarray(frame_arr)
-        labels_arr = np.asarray(labels_arr)        
-        where_sure = np.asarray([x=="sure" for x in types])
-        frames_sure = frame_arr[where_sure]
-        bodies_sure = np.asarray(bodies)[where_sure]
-        
-        where_unsure = np.asarray([x=="unsure" for x in types])
-        frames_unsure = frame_arr[where_unsure]
-        labels_unsure = labels_arr[where_unsure]
-        #For each frame unsure, gets the closest sure frame
-        #Then looks for the corresponding cell body
-        for fr,lab in zip(frames_unsure,labels_unsure):
-            closest_sure_frame = np.abs(frames_sure-fr)
-            closest_sure_frame = frames_sure[closest_sure_frame==np.min(closest_sure_frame)]
-            closest_sure_frame = closest_sure_frame[0]
-            closest_body = bodies_sure[frames_sure==closest_sure_frame][0]
-            print "closest association:",closest_sure_frame,closest_body
-            indices,cells = experiment.find_trajectory(closest_sure_frame,closest_body,arm=False)
-            indices = np.asarray(indices)
-            cells = np.asarray(cells)
-            #If trajectory of body goes dar enough 
-            if fr in indices:
-                new_label = cells[indices==fr][0]
-                candidates = [(j,list_joints) for j,(labb,list_joints) in enumerate(experiment.unsure_arms_list[fr]) if labb==lab]
-                if len(candidates)!=1:
-                    raise IndexError('cant find an appropriate number of candidates')
-                index,list_to_check = candidates[0]
-                if not new_label in list_to_check:
-                    print "no comprendo la correspondencia"
-                else:
-                    experiment.unsure_arms_list[fr].pop(index)
-                    experiment.arms_list[fr][new_label].append(lab)
-
-#Processing all unsure arms
-for i in range(experiment2.n_frames):
-    list_of_arms = [x for x,y in experiment2.unsure_arms_list[i]]
-    for arm in list_of_arms:
-        assign_unsure_arm(i,arm,experiment2)
-#-------------------------End script----------------------------------------------##
-#Frame numbers start from 0. Indexes from 1!!!
-disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
-disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
-apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1)]   #Frame, cell appearing, n of cluster it belonged before
-apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
-
-apparition_from_arm_to_body_exterior = [(2,85),(20,56)]  #If transformation close to the edge we can forgive
-
-def show_disparitions(corresp):
-    return [x+1 for (x,y) in corresp if y==-1]
-def show_apparitions(corresp):
-    return [y+1 for (x,y) in corresp if x==-1]
-def show_app_and_dis(corres,nr):
-    print "apparitions:"
-    print show_apparitions(corres[nr])
-    print "disparitions:"
-    print show_disparitions(corres[nr])
-
-def test_prediction(experiment):
-    disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
-    disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
-    apparitions_decluster = [(0,45,44),(0,4,4),(0,48,46),(1,85,78),(2,59,61),(20,3,1)]   #Frame, cell appearing, n of cluster it belonged before
-    apparition_from_arm_to_body = [(0,47),(0,41),(0,29),(20,82)]
-    apparition_from_arm_to_body_exterior = [(2,85),(20,56)]
-    
-    print "disparitions: from noyau to arm"
-    for (u,v) in disparitions_from_nucl_to_arm:
-        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
-        print "arm:",p1,l1,"body",p2,l2
-    print "disparitions: fusion"
-    for (u,v,w) in disp_fusion:
-        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u,u+1)
-        
-        print "arm:",p1,l1,"body",p2,l2
-        
-    print "apparitions:decluster"
-    for (u,v,w) in apparitions_decluster:
-        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
-        print "arm:",p1,l1,"body",p2,l2
-        
-    print "apparitions:arm t body"
-    for (u,v) in apparition_from_arm_to_body:
-        (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
-        print "arm:",p1,l1,"body",p2,l2
-
-#test find arm in frame:
-def test_find_arm_in_frame(experiment2):
-    for i in range(experiment2.n_frames):
-        for j,liszt in enumerate(experiment2.arms_list[i]):
-            for label in liszt:
-                typp,cell = find_arm_in_frame(i,label,experiment2)
-                if typp!='sure' and cell!=j:
-                    print "wrong finding"
-                    break
-        for label in experiment2.free_arms_list[i]:
-            typp,cell = find_arm_in_frame(i,label,experiment2)
-            if typp!='free':
-                print "error free",i,label,typp
-                break
-        for label,osef_list in experiment2.unsure_arms_list[i]:
-            typp,cell = find_arm_in_frame(i,label,experiment2)
-            if typp!='unsure':
-                print "error unsure"
-                break
-    print "test passed"
+classifications_normal = []
+for i in range(100):
+    print "index",i
+    #cv2.destroyAllWindows()
+    traj = trajectories_remaining[i]
+    inp= classify_trajectory(traj)
+    if inp!='e' and inp !='q':    #otherwise it is an error
+        classifications_normal.append((inp,traj))
