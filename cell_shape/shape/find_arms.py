@@ -40,13 +40,11 @@ def check_frame(nr,liste):
     m.si2(centers,out,"centers","arms associated")
     m.si2(arms,arms_out,"arms","arms remaining")
     
-def reorder_list(liste):
+def reorder_list(liste,max_body):
     """liste is a correspondance list. Each of these correspondance 
     lists assigns a body to a cell arm. This method assigns all of its arms to 
-    each cell body"""
-    max_body=0
-    for arm,body in liste:
-        max_body = max(max_body,body)
+    each cell body
+    max_body is the maximum index of a body in the frame of interest"""
     #List indexing statrs from 0 but body indexes start from 1 Careful
     ordered_list = []
     for i in range(max_body+1):
@@ -231,6 +229,54 @@ def morphology_split(frame,label,number,max_labels_in_frame):
         frame[y:y+h,x:x+w]=lab
     return success
 
+#--------------Complex trajectories----------------------------------------------
+def raccomodate_after_to_before(index1,index2,number,before_raccomodations,experiment):
+    """returns the index in before_raccomodation corresponding to the tuple
+    (frame,label,number) in after_raccomodation"""
+    traj = experiment.trajectories[index1][index2]
+    nframe = traj.end
+    next_label = number
+    for i in range(nframe+1,239):
+        candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i+1] 
+        next_label = experiment.arm_tracker.next_cell(i,next_label)
+        if next_label==-1:
+            return -1
+        if len(candidates)==1:
+                return candidates[0]
+    return -1
+list_of_raccomodated = []
+for i,(frame,label,number) in enumerate(raco_after):
+    index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
+    if index!=-1:
+        list_of_raccomodated.append((i,index))
+
+#list of raco : after,before
+#eah consist of (index_traj_1,index_traj_2,label_of_new_element
+
+def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom):
+    """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
+    z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
+    l,k = list_of_raccom.pop(z)
+    traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
+    if len(complex_trajectory)==0:
+        traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
+        complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
+    else:
+        complex_trajectory.extend([raco_after[l],raco_before[k],traj1])
+    
+    for l_prime, (i1,i2,label) in enumerate(raco_after):
+        #Find if there is a racomodation after
+        if traj1==experiment2.trajectories[i1][i2]:
+            #Find if this raccomoadtion can itself be raccomodated
+            candidates = [i for i,(x,y) in enumerate(list_of_raccom) if x==l_prime]
+            if len(candidates)==1:
+                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom)
+            else:
+                complex_trajectory.append((i1,i2,label))
+                return
+    return
+
+#--------------Class Experiment--------------------------------------------------
 class Experiment(object):
     """Class doing all the job of an expreiment: sgmentation, tracking
     and other improvements"""
@@ -326,6 +372,7 @@ class Experiment(object):
             free_arms_frame=[]
             centers = m.open_frame(self.body_path,i)
             arms = m.open_frame(self.arm_path,i)
+            max_centers=np.max(centers)
             
             kernel = np.ones((5,5),np.uint8)
             dilation = cv2.dilate(centers,kernel,iterations = 1)
@@ -342,11 +389,11 @@ class Experiment(object):
                 else:
                     arm_unsure_frame.append( (arm_label-1,[x-1 for x in candidates]) )
                     
-            arms_assignment_list.append(arm_center_corresp)
+            arms_assignment_list.append(reorder_list(arm_center_corresp,max_centers) )
             arm_unsure_list.append(arm_unsure_frame)
             free_arms_list.append(free_arms_frame)
             
-        self.arms_list = map(reorder_list,arms_assignment_list)
+        self.arms_list = arms_assignment_list
         self.unsure_arms_list = arm_unsure_list
         self.free_arms_list = free_arms_list
     
@@ -535,7 +582,7 @@ class Experiment(object):
         after_indices=[]
         after_cells = []
         next_cell = label
-        for i in range(frame,self.n_frames):
+        for i in range(frame,self.n_frames-1):
             if arm:
                 next_cell = self.arm_tracker.next_cell(i,next_cell)
             else:
@@ -611,52 +658,6 @@ def redefine_labels(path_centers):
 experiment2 = Experiment(path,path_centers,path_arms)
 experiment2.load()
 raco_before,raco_after=experiment2.trajectory_racomodation()
-"""error is here"""
-def raccomodate_after_to_before(index1,index2,number,before_raccomodations,experiment):
-    """returns the index in before_raccomodation corresponding to the tuple
-    (frame,label,number) in after_raccomodation"""
-    traj = experiment.trajectories[index1][index2]
-    nframe = traj.end
-    next_label = number
-    for i in range(nframe+1,239):
-        candidates = [j for j,(x,y,z) in enumerate(before_raccomodations) if z==next_label and x==i+1] 
-        next_label = experiment.arm_tracker.next_cell(i,next_label)
-        if next_label==-1:
-            return -1
-        if len(candidates)==1:
-                return candidates[0]
-    return -1
-list_of_raccomodated = []
-for i,(frame,label,number) in enumerate(raco_after):
-    index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
-    if index!=-1:
-        list_of_raccomodated.append((i,index))
-
-#list of raco : after,before
-#eah consist of (index_traj_1,index_traj_2,label_of_new_element
-
-def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom):
-    """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
-    z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
-    l,k = list_of_raccom.pop(z)
-    traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
-    if len(complex_trajectory)==0:
-        traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
-        complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
-    else:
-        complex_trajectory.extend([raco_after[l],raco_before[k],traj1])
-    
-    for l_prime, (i1,i2,label) in enumerate(raco_after):
-        #Find if there is a racomodation after
-        if traj1==experiment2.trajectories[i1][i2]:
-            #Find if this raccomoadtion can itself be raccomodated
-            candidates = [i for i,(x,y) in enumerate(list_of_raccom) if x==l_prime]
-            if len(candidates)==1:
-                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom)
-            else:
-                complex_trajectory.append((i1,i2,label))
-                return
-    return
 
 list_of_racc_disposable = list_of_raccomodated[:]
 total_merged_trajectories = []  #List of complex trajectories
@@ -723,8 +724,6 @@ def find_arm_in_frame(frame,label,experiment):
 def assign_unsure_arm(frame,label,experiment):
     """Gets the trajectory of each arm in unsure_list and if """
     frame_arr,labels_arr = experiment.find_trajectory(frame,label,arm=True)
-    print frame_arr
-    print labels_arr
     types = []   #contains the type of each earm tracked: sure,unsure,free
     bodies = []
     for u,v in zip(frame_arr,labels_arr):
@@ -735,9 +734,6 @@ def assign_unsure_arm(frame,label,experiment):
     if "free" in types:
         #If it is free at one point we can't say yet
         return
-    print types
-    print bodies
-    print labels_arr
     if "sure" in types:
         frame_arr = np.asarray(frame_arr)
         labels_arr = np.asarray(labels_arr)        
@@ -755,23 +751,28 @@ def assign_unsure_arm(frame,label,experiment):
             closest_sure_frame = frames_sure[closest_sure_frame==np.min(closest_sure_frame)]
             closest_sure_frame = closest_sure_frame[0]
             closest_body = bodies_sure[frames_sure==closest_sure_frame][0]
+            print "closest association:",closest_sure_frame,closest_body
             indices,cells = experiment.find_trajectory(closest_sure_frame,closest_body,arm=False)
             indices = np.asarray(indices)
             cells = np.asarray(cells)
-            new_label = cells[indices==fr][0]
-            print indices
-            print cells
-            print "frame",fr,"new label:",new_label,"closest frame:",closest_sure_frame
-            candidates = [(j,list_joints) for j,(labb,list_joints) in enumerate(experiment.unsure_arms_list[fr]) if labb==lab]
-            if len(candidates)!=1:
-                raise IndexError('cant find an appropriate number of candidates')
-            index,list_to_check = candidates[0]
-            if not new_label in list_to_check:
-                print "no comprendo la correspondencia"
-            experiment.unsure_arms_list[fr].pop(index)
-            experiment.arms_list[fr][new_label].append(lab)
-            
-assign_unsure_arm(5,112,experiment2)
+            #If trajectory of body goes dar enough 
+            if fr in indices:
+                new_label = cells[indices==fr][0]
+                candidates = [(j,list_joints) for j,(labb,list_joints) in enumerate(experiment.unsure_arms_list[fr]) if labb==lab]
+                if len(candidates)!=1:
+                    raise IndexError('cant find an appropriate number of candidates')
+                index,list_to_check = candidates[0]
+                if not new_label in list_to_check:
+                    print "no comprendo la correspondencia"
+                else:
+                    experiment.unsure_arms_list[fr].pop(index)
+                    experiment.arms_list[fr][new_label].append(lab)
+
+#Processing all unsure arms
+for i in range(experiment2.n_frames):
+    list_of_arms = [x for x,y in experiment2.unsure_arms_list[i]]
+    for arm in list_of_arms:
+        assign_unsure_arm(i,arm,experiment2)
 #-------------------------End script----------------------------------------------##
 #Frame numbers start from 0. Indexes from 1!!!
 disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
