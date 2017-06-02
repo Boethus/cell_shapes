@@ -10,6 +10,8 @@ import numpy as np
 import methods as m
 import matplotlib.pyplot as plt
 
+plt.close('all')
+
 def centroid(img,label):
     """returns x,y the position of the centroid of label in img"""
     x,y = np.where(img==label)
@@ -81,11 +83,11 @@ class Feature_Extractor(object):
         cells = self.trajectory.cells
         length = len(cells)
         first_body = self.open_body(cells[0].frame_number)
-        prev_position_x,prev_position_y = centroid(first_body,cells[0].body)
+        prev_position_x,prev_position_y = centroid(first_body,cells[0].body+1)
         speeds = []
         for i in range (1,length):
-            body_img = self.open_body(cells[0].frame_number)
-            new_position_x,new_position_y = centroid(body_img,cells[i].body)
+            body_img = self.open_body(cells[i].frame_number)
+            new_position_x,new_position_y = centroid(body_img,cells[i].body+1)
             speed = np.sqrt((new_position_x-prev_position_x)**2 + (new_position_y-prev_position_y)**2)
             prev_position_x = new_position_x
             prev_position_y = new_position_y
@@ -103,8 +105,10 @@ for i,elt in enumerate(dist_list):
         x.append(i)
         y.append(j)
 plt.figure()
-plt.plot(x,y)
+plt.scatter(x,y)
 plt.title("evolution of distances with time")
 speeds = extractor.speed()
-
+plt.figure()
+plt.plot(speeds)
+plt.title("speed")
             

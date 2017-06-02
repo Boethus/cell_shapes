@@ -15,7 +15,6 @@ Created on Fri May 19 10:34:26 2017
 import os
 import sys
 sys.path.append(os.path.join(".","..","segmentation"))
-print os.getcwd()
 import methods as m
 import numpy as np
 import scipy.ndimage as ndi
@@ -25,7 +24,7 @@ import glob
 from screeninfo import get_monitors
 import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
-import process_trajectories as pt
+#import process_trajectories as pt
 
 plt.close('all')
 
@@ -102,6 +101,95 @@ class Trajectory(object):
     def __eq__(self,other_traj):
         """overloading operator ="""
         return (self.beginning==other_traj.beginning and self.cells[0].body == other_traj.cells[0].body)
+
+    def show(self,experiment,wait=50):
+        """Displays on screen the tempral trajectory in experiment"""
+        path_im = experiment.path
+        path_body = experiment.body_path
+        path_arm = experiment.arm_path
+        cells_list = self.cells
+        for cell in cells_list:
+            frame_number = cell.frame_number+1
+            img = m.open_frame(path_im,frame_number)
+            body = m.open_frame(path_body,frame_number)
+            arms = m.open_frame(path_arm,frame_number)
+            mask = (body==(cell.body+1)).astype(np.uint8)*255
+            mask_arms = np.zeros(mask.shape,dtype=np.uint8)
+            for arm in cell.arms:
+                mask_arms+=(arms==(arm+1)).astype(np.uint8)*255
+            overlaid = m.cv_overlay_mask2image(mask,img,"green")
+            overlaid = m.cv_overlay_mask2image(mask_arms,overlaid,"red")
+            cv2.imshow("Trajectory",overlaid)
+            
+            cv2.waitKey(wait)
+        cv2.destroyWindoww("Trajectory")
+
+class Complex_Trajectory(list):
+    """"a Complex trajectory is a sequence of Trajectories and arms trajectories
+    corresponding to the same cell"""
+    def __init__(self,*args):
+        list.__init__(self,*args)
+        
+    def show(self,experiment,wait=50):
+        """Displays this complex trajectory"""
+        path_im = experiment.path
+        path_body = experiment.body_path
+        path_arm = experiment.arm_path
+        previous = 'trajectory'
+        
+        monitor = get_monitors()[0]
+        width = monitor.width
+        height = monitor.height
+        cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Trajectory', width, height)
+        for i,elt in enumerate(self):
+            if type(elt)==tuple:
+                #raccomodation
+                if i>0:
+                    if type(self[i-1])==tuple:
+                        previous='tuple'
+                    else:
+                        previous='trajectory'
+                
+                if previous=='trajectory':
+                    #looks after
+                    stop_frame = 239
+                    if i!=len(self)-1:
+                        index_next1,index_next_2,_ = self[i+1]
+                        next_traj = experiment.trajectories[index_next1][index_next_2]
+                        stop_frame = next_traj.beginning
+                    
+                    last_frame = self[i-1].end
+                    next_frame = last_frame+1
+                    label = elt[2]
+                    while next_frame<stop_frame and experiment.arm_tracker.next_cell(next_frame,label)!=-1:
+                         
+                         img = m.open_frame(path_im,next_frame+1)
+                         arms = m.open_frame(path_arm,next_frame+1)
+                         mask = (arms==(label+1)).astype(np.uint8)*255
+                         label = experiment.arm_tracker.next_cell(next_frame,label)
+                         next_frame+=1
+                         overlaid = m.cv_overlay_mask2image(mask,img,"red")
+                         cv2.imshow("Complex Trajectory",overlaid)
+                         cv2.waitKey(wait)
+            else:
+                cells_list = elt.cells        
+                for cell in cells_list:
+                    frame_number = cell.frame_number+1
+                    img = m.open_frame(path_im,frame_number)
+                    body = m.open_frame(path_body,frame_number)
+                    arms = m.open_frame(path_arm,frame_number)
+                    mask = (body==(cell.body+1)).astype(np.uint8)*255
+                    mask_arms = np.zeros(mask.shape,dtype=np.uint8)
+                    for arm in cell.arms:
+                        mask_arms+=(arms==(arm+1)).astype(np.uint8)*255
+                    overlaid = m.cv_overlay_mask2image(mask,img,"green")
+                    overlaid = m.cv_overlay_mask2image(mask_arms,overlaid,"red")
+                    cv2.imshow("Complex Trajectory",overlaid)
+                    
+                    cv2.waitKey(wait)
+                    
+        cv2.destroyWindow("Complex Trajectory")
     
 def show_trajectory(traj,experiment,wait=50):
     """Displays on screen a temporal trajectory traj."""
@@ -187,6 +275,10 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
     #cv2.destroyAllWindows()
     
 
+
+
+#test find arm in frame:
+#-------------------Misc tests-----------------------------------
 def test_prediction(experiment):
     disparitions_from_nucl_to_arm = [(0,31),(0,23),(20,71)]    #List of manually annotated disparitions
     disp_fusion = [(0,58,57),(2,8,4),(2,40,39)]    #Frame, cell disappearing, cell with which it merges
@@ -213,9 +305,7 @@ def test_prediction(experiment):
     for (u,v) in apparition_from_arm_to_body:
         (p1,l1),(p2,l2)= experiment.nature_event(v-1,u+1,u)
         print "arm:",p1,l1,"body",p2,l2
-
-#test find arm in frame:
-#-------------------Misc tests-----------------------------------
+        
 def test_find_arm_in_frame(experiment2):
     for i in range(experiment2.n_frames):
         for j,liszt in enumerate(experiment2.arms_list[i]):
@@ -836,7 +926,9 @@ path_arms = os.path.join("..",'data','microglia','1_arms')
 
 experiment2 = Experiment(path,path_centers,path_arms)
 experiment2.load()
-
+experiment2.assign_arm()
+process_unsure_arms(experiment2)
+experiment2.compute_all_trajectories()
 complex_trajectories = get_complex_trajectories(experiment2)
 
 
@@ -852,14 +944,6 @@ def classify_complex_trajectory(traj):
     if inp=='q':
         inp = classify_complex_trajectory(traj)
     return inp
-classifications = []
-for i in range(2):
-    print i
-    #cv2.destroyAllWindows()
-    traj = complex_trajectories[i]
-    inp= classify_complex_trajectory(traj)
-    if inp!='e' and inp!='q':    #otherwise it is an error
-        classifications.append((inp,traj))
         
 def saveClassif(classification):
     with open('classification_results.pkl','wb') as out:
@@ -900,11 +984,22 @@ def classify_trajectory(traj):
         classify_trajectory(traj)
     return inp
 
-classifications_normal = []
-for i in range(100):
-    print "index",i
-    #cv2.destroyAllWindows()
-    traj = trajectories_remaining[i]
-    inp= classify_trajectory(traj)
-    if inp!='e' and inp !='q':    #otherwise it is an error
-        classifications_normal.append((inp,traj))
+classifying = False
+if classifying:
+    classifications = []
+    for i in range(2):
+        print i
+        #cv2.destroyAllWindows()
+        traj = complex_trajectories[i]
+        inp= classify_complex_trajectory(traj)
+        if inp!='e' and inp!='q':    #otherwise it is an error
+            classifications.append((inp,traj))
+        
+    classifications_normal = []
+    for i in range(100):
+        print "index",i
+        #cv2.destroyAllWindows()
+        traj = trajectories_remaining[i]
+        inp= classify_trajectory(traj)
+        if inp!='e' and inp !='q':    #otherwise it is an error
+            classifications_normal.append((inp,traj))
