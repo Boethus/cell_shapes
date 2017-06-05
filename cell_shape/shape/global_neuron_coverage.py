@@ -7,15 +7,14 @@ Created on Fri Jun 02 15:00:32 2017
 
 #This script intends to compute the portion of microglia "overlapping" chunks of neuron
 #in an experiment
-
-import methods as m
+import sys
 import os
-from sklearn.cluster import KMeans
+sys.path.append(os.path.join(".","..","segmentation"))
+import methods as m
 import numpy as np
 from PIL import Image
 import skimage.filters
 import matplotlib.pyplot as plt
-import cv2
 plt.close('all')
 
 def open_phase(path,fr_nb):
@@ -27,11 +26,10 @@ def open_phase(path,fr_nb):
     return phase
 
 #Experiment number
-exp = 1
+exp = 2
 path = os.path.join("..",'data','microglia','Beacon-'+str(exp)+' unst')
-path_fluo = os.path.join("..",'data','microglia','RFP'+str(exp)+'_denoised')
+path_fluo = os.path.join("..",'data','microglia',str(exp)+'_denoised')
 
-frame=2
 ratios = np.zeros(241)
 
 phase = open_phase(path,100)

@@ -925,10 +925,12 @@ path_arms = os.path.join("..",'data','microglia','1_arms')
 #redefine_labels(path_centers)
 
 experiment2 = Experiment(path,path_centers,path_arms)
+"""
 experiment2.load()
 experiment2.assign_arm()
 process_unsure_arms(experiment2)
-experiment2.compute_all_trajectories()
+experiment2.compute_all_trajectories()"""
+experiment2.load()
 complex_trajectories = get_complex_trajectories(experiment2)
 
 
@@ -1003,3 +1005,14 @@ if classifying:
         inp= classify_trajectory(traj)
         if inp!='e' and inp !='q':    #otherwise it is an error
             classifications_normal.append((inp,traj))
+            
+def replace_classification_results(classif_results,complex_traj):
+    """Replaces the trajectories in classif_results by the ones in complex_traj"""
+    for i,(label,traj) in enumerate(classif_results):
+        new_traj = [x for x in complex_traj if x[0]==traj[0] ]
+        if len(new_traj)!=1:
+            print "eror shape"
+        else:
+            new_traj = new_traj[0]
+            classif_results[i]=(label,new_traj)
+#replace_classification_results(classification_results,complex_trajectories)
