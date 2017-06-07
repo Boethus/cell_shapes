@@ -122,7 +122,7 @@ class Trajectory(object):
             cv2.imshow("Trajectory",overlaid)
             
             cv2.waitKey(wait)
-        cv2.destroyWindoww("Trajectory")
+        cv2.destroyWindow("Trajectory")
 
 class Complex_Trajectory(list):
     """"a Complex trajectory is a sequence of Trajectories and arms trajectories
@@ -428,24 +428,24 @@ def raccomodate_after_to_before(index1,index2,number,before_raccomodations,exper
 #list of raco : after,before
 #eah consist of (index_traj_1,index_traj_2,label_of_new_element
 
-def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom,raco_before,raco_after):
+def assemble_complex_trajectories(complex_trajectory,z,list_of_raccom,raco_before,raco_after,experiment):
     """A complex trajectory is a list of [traj, raccomodation_after,raccomodation_before,traj2,...]
     z is the index in the list of complex trajectories corresponding to an apparition/reapparition."""
     l,k = list_of_raccom.pop(z)
-    traj1 = experiment2.trajectories[raco_before[k][0]][raco_before[k][1]]
+    traj1 = experiment.trajectories[raco_before[k][0]][raco_before[k][1]]
     if len(complex_trajectory)==0:
-        traj0 = experiment2.trajectories[raco_after[l][0]][raco_after[l][1]]
+        traj0 = experiment.trajectories[raco_after[l][0]][raco_after[l][1]]
         complex_trajectory.extend([traj0,raco_after[l],raco_before[k],traj1])
     else:
         complex_trajectory.extend([raco_after[l],raco_before[k],traj1])
     
     for l_prime, (i1,i2,label) in enumerate(raco_after):
         #Find if there is a racomodation after
-        if traj1==experiment2.trajectories[i1][i2]:
+        if traj1==experiment.trajectories[i1][i2]:
             #Find if this raccomoadtion can itself be raccomodated
             candidates = [i for i,(x,y) in enumerate(list_of_raccom) if x==l_prime]
             if len(candidates)==1:
-                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom,raco_before,raco_after)
+                assemble_complex_trajectories(complex_trajectory,candidates[0],list_of_raccom,raco_before,raco_after,experiment)
             else:
                 complex_trajectory.append((i1,i2,label))
                 return
@@ -457,7 +457,7 @@ def get_complex_trajectories(experiment):
     
     list_of_raccomodated = []
     for i,(frame,label,number) in enumerate(raco_after):
-        index = raccomodate_after_to_before(frame,label,number,raco_before,experiment2)
+        index = raccomodate_after_to_before(frame,label,number,raco_before,experiment)
         if index!=-1:
             list_of_raccomodated.append((i,index))
     
@@ -467,7 +467,7 @@ def get_complex_trajectories(experiment):
         comp_traj = []
         if i>=len(list_of_racc_disposable):
             break
-        assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable,raco_before,raco_after)
+        assemble_complex_trajectories(comp_traj,i,list_of_racc_disposable,raco_before,raco_after,experiment)
         total_merged_trajectories.append(comp_traj)
     return total_merged_trajectories
 #----------------------Assign arm to correct nucleus-----------
@@ -913,30 +913,39 @@ class Experiment(object):
     def load(self):
         print "loading trois petits points"
         name="experiment"
-        with open(os.path.join(path,name),'rb') as dataPickle:
+        with open(os.path.join(self.path,name),'rb') as dataPickle:
             self.__dict__ = pickle.load(dataPickle)
+    def process_from_scratch(self):
+        """used if need to process a whole new set of data"""
+        print "stack segmentation"
+        self.segmentStack()
+        print "track arms and centers..."
+        self.track_arms_and_centers()
+        print "arms assignment..."
+        self.assign_arm()
+        print "processing unsure arms"
+        process_unsure_arms(self)
+        print "compute trajectories"
+        self.compute_all_trajectories()
+        self.classify_events()
+        self.save()
             
 #--------------------------Script-----------------------------------------------
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path_arms = os.path.join("..",'data','microglia','1_arms')    
-
+"""path = os.path.join("..",'data','microglia','8_denoised')
+path_centers = os.path.join("..",'data','microglia','8_centers') 
+path_arms = os.path.join("..",'data','microglia','8_arms')    
+"""
 
 #redefine_labels(path_centers)
-
-experiment2 = Experiment(path,path_centers,path_arms)
 """
-experiment2.load()
-experiment2.assign_arm()
-process_unsure_arms(experiment2)
-experiment2.compute_all_trajectories()"""
-experiment2.load()
-complex_trajectories = get_complex_trajectories(experiment2)
-
-
-def classify_complex_trajectory(traj):
+experiment3 = Experiment(path,path_centers,path_arms)
+#experiment3.process_from_scratch()
+experiment3.load()
+complex_trajectories = get_complex_trajectories(experiment3)
+"""
+def classify_complex_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
-    show_complex_trajectory(complex_trajectories[i],experiment2,50)
+    show_complex_trajectory(complex_trajectories[i],experiment,50)
     possible_answers = ['r','w','t','m','q','e']
     inp = ''
     while(not inp in possible_answers):
@@ -944,7 +953,7 @@ def classify_complex_trajectory(traj):
                       motile, error (r/w/t/m/e)? Press q to see the sequence again\n""")
     
     if inp=='q':
-        inp = classify_complex_trajectory(traj)
+        inp = classify_complex_trajectory(traj,experiment)
     return inp
         
 def saveClassif(classification):
@@ -973,9 +982,9 @@ def find_simple_trajectories(experiment2,complex_trajectories):
                 trajectories_remaining.append(traj)
     return trajectories_remaining
             
-def classify_trajectory(traj):
+def classify_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
-    show_trajectory(traj,experiment2,50)
+    show_trajectory(traj,experiment,50)
     possible_answers = ['r','w','t','m','q','e']
     inp = ''
     while(not inp in possible_answers):
@@ -989,14 +998,15 @@ def classify_trajectory(traj):
 classifying = False
 if classifying:
     classifications = []
-    for i in range(2):
+    for i in range(84,len(complex_trajectories)):
         print i
         #cv2.destroyAllWindows()
         traj = complex_trajectories[i]
-        inp= classify_complex_trajectory(traj)
+        inp= classify_complex_trajectory(traj,experiment3)
         if inp!='e' and inp!='q':    #otherwise it is an error
             classifications.append((inp,traj))
-        
+classifying_normal = False
+if classifying_normal:
     classifications_normal = []
     for i in range(100):
         print "index",i

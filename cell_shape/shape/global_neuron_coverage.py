@@ -26,9 +26,9 @@ def open_phase(path,fr_nb):
     return phase
 
 #Experiment number
-exp = 2
+exp = 1
 path = os.path.join("..",'data','microglia','Beacon-'+str(exp)+' unst')
-path_fluo = os.path.join("..",'data','microglia',str(exp)+'_denoised')
+path_fluo = os.path.join("..",'data','microglia',"RFP"+str(exp)+'_denoised')
 
 ratios = np.zeros(241)
 

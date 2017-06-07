@@ -202,50 +202,26 @@ class Complex_Feature_Extractor(Feature_Extractor):
         return total_speeds
         
 #test : 
-
+"""
 extractor = Feature_Extractor(experiment2)
 extractor.set_trajectory(classification_results[3][1][0])
-dist_list,traj_list= extractor.find_distance()
+dist_list,traj_list= extractor.find_distance()"""
+def plot_multiple_caracs(experiment, classification_results,x,y,carac="distance"):
+    ce = Complex_Feature_Extractor(experiment)
+    
+    plt.figure()
+    if carac=="distance":
+        plt.suptitle("Evolution fo distance arms-body with time")
+    else:
+        plt.suptitle("Speed profiles")
+    for i in range(x*y):
+        plt.subplot(x,y,i+1)
+        ce.set_trajectory(classification_results[i][1])
+        if carac=="distance":
+            ce.plot_distances(new_fig=False)
+        else:
+            plt.plot(ce.speed())
+        #plt.title(str(i)+"Class: "+classification_results[i][0])
 
-ce = Complex_Feature_Extractor(experiment2)
 
-plt.figure()
-plt.suptitle("Evolution fo distance arms-body with time")
-for i in range(len(classification_results)):
-    plt.subplot(5,3,i+1)
-    ce.set_trajectory(classification_results[i][1])
-    #ce.plot_distances(new_fig=False)
-    plt.plot(ce.speed())
-    plt.title(str(i)+"Class: "+classification_results[i][0])
-
-ce.set_trajectory(classification_results[3][1])
-speed = ce.speed()
-plt.figure()
-plt.plot(speed)
-plt.title("complex speed")
-x = []
-y = []
-for i,elt in enumerate(dist_list):
-    for j in elt:
-        x.append(i)
-        y.append(j)
-plt.figure()
-plt.scatter(x,y)
-plt.title("evolution of distances with time")
-
-#Comparison with the trajectories extracted:
-plt.figure()
-for lists in traj_list:
-    x=[]
-    y=[]
-    if len(lists)>10:   #show only longer, relevant trajectories
-        for (u,v) in lists:
-            x.append(u)
-            y.append(v)
-            plt.plot(x,y)
-plt.title("Distances of different arms to the center")
-speeds = extractor.speed()
-plt.figure()
-plt.plot(speeds)
-plt.title("speed")
             
