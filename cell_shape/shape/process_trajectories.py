@@ -150,6 +150,10 @@ class Complex_Feature_Extractor(Feature_Extractor):
         traj_list = self.find_distance()
         if new_fig:
             plt.figure()
+            plt.title("Evolution of ramification length")
+            plt.ylabel("length")
+            plt.xlabel("frame nr")
+            
         for lists in traj_list:
             x=[]
             y=[]
@@ -158,6 +162,7 @@ class Complex_Feature_Extractor(Feature_Extractor):
                     x.append(u)
                     y.append(v)
                     plt.plot(x,y)
+                    
     def speed(self):
         extractor = Feature_Extractor(self.experiment)
         total_speeds=[]

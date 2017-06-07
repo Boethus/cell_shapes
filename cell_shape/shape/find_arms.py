@@ -1025,4 +1025,16 @@ def replace_classification_results(classif_results,complex_traj):
         else:
             new_traj = new_traj[0]
             classif_results[i]=(label,new_traj)
+#Untested
+def gaussian_score_list(path,path_bodies,nr):
+    """computes the gaussian score for frame number nr in path.
+    returns the maximum of this score in each segment"""
+    image = m.open_frame(path,nr)
+    bodies = m.open_frame(path_bodies,nr)
+    score_frame = m.where_are_gaussians(image)
+    scores = []
+    for i in range(np.max(image)):
+        score_i = np.max(score_frame[bodies==i+1])
+        scores.append(score_i)
+    return scores
 #replace_classification_results(classification_results,complex_trajectories)

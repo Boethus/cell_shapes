@@ -9,10 +9,7 @@ Created on Tue Jun  6 08:49:01 2017
 import os
 import find_arms as fa
 import cPickle as pickle
-path2 = os.path.join("..",'data','microglia','
-                     
-                     
-                     _denoised')
+path2 = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers2 = os.path.join("..",'data','microglia','1_centers') 
 path_arms2 = os.path.join("..",'data','microglia','1_arms')    
 
@@ -58,10 +55,10 @@ pt.plot_multiple_caracs(experiment3,classification_exp3,4,4,"speed")
 #---------Show some examples-----------------------------
 
 interesting_exp3 = [-2,-1,4]
-fa.show_complex_trajectory(classification_exp3[-2][1],experiment3,00)
+fa.show_complex_trajectory(classification_exp3[7][1],experiment3,00)
 
 interesting_exp2 = [2,4,-2] #Nb2 is super
-fa.show_complex_trajectory(classification_exp2[2][1],experiment2,0)
+fa.show_complex_trajectory(classification_exp2[2][1],experiment2,100)
 
 
 
