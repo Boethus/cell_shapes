@@ -1095,13 +1095,16 @@ simple_trajectories = filter(lambda x: len(x.cells)>3,simple_trajectories)
 scores_list =  gs_score_experiment(experiment3)
 
 gs_scores = gs_score_each_traj(experiment3,simple_trajectories,scores_list)
-
-order = dict(zip(gs_scores, simple_trajectories))
-simple_trajectories.sort(key=order.get)
-gs_scores.sort()
+"""Not sure that it is correctly sorted"""
+#order = dict(zip(gs_scores, simple_trajectories))
+#simple_trajectories.sort(key=order.get)
+#gs_scores.sort()
+traj_n_score = zip(simple_trajectories,gs_scores)
+traj_n_score.sort(key= lambda x: x[1])
+traj_n_score = [x[0] for x in traj_n_score]
 #Try to see wehre the limit is:
 num_traj = len(simple_trajectories)
-simple_trajectories[num_traj-8].show(experiment3,0)
+traj_n_score[num_traj-8].show(experiment3,0)
 
 
 
