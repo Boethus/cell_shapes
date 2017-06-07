@@ -333,7 +333,6 @@ def find_gaussian(img,sigma=25):
     #Filters location map so that only one gaussian is found per contiguous location
     location_map =  res >= threshold*np.max(res)
     location_map,nr = ndi.label(location_map)
-    print "Nb of contiguous zones detected:",nr
     list_x = []
     list_y = []
     for label in range(1,nr+1):
@@ -366,6 +365,28 @@ def where_are_gaussians(img):
             pt=(locs[0][i],locs[1][i])
             mask[pt[0]:pt[0]+w,pt[1]:pt[1]+w] = True
     return mask
+
+def gaussian_proba_map(img):
+    """Finds the probability that each point in img is a gaussian
+    returns an image with same dimensions"""
+    method = 'cv2.TM_CCOEFF_NORMED'
+    sigmas = [41,31,21,11]
+    out = np.zeros(img.shape)
+    for sigma in sigmas:
+        size=3*sigma
+        template = gaussian(size,sigma)
+        template/=template.max()
+        template*=255
+        template = template.astype(np.uint8)
+        
+        img2 = img.copy()
+        meth = eval(method)
+        # Apply template Matching
+        res = cv2.matchTemplate(img2,template,meth)
+        res = np.pad(res,size/2,mode='constant')
+        to_replace = res>out
+        out[to_replace] = res[to_replace]
+    return out
 
 #-------------Display functions---------------------------------------
 

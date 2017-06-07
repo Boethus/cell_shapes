@@ -104,6 +104,12 @@ class Trajectory(object):
 
     def show(self,experiment,wait=50):
         """Displays on screen the tempral trajectory in experiment"""
+        monitor = get_monitors()[0]
+        width = monitor.width
+        height = monitor.height
+        cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Trajectory', width, height)
+        
         path_im = experiment.path
         path_body = experiment.body_path
         path_arm = experiment.arm_path
@@ -140,8 +146,8 @@ class Complex_Trajectory(list):
         monitor = get_monitors()[0]
         width = monitor.width
         height = monitor.height
-        cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('Trajectory', width, height)
+        cv2.namedWindow("Complex Trajectory", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Complex Trajectory', width, height)
         for i,elt in enumerate(self):
             if type(elt)==tuple:
                 #raccomodation
@@ -193,6 +199,12 @@ class Complex_Trajectory(list):
     
 def show_trajectory(traj,experiment,wait=50):
     """Displays on screen a temporal trajectory traj."""
+    monitor = get_monitors()[0]
+    width = monitor.width
+    height = monitor.height
+    cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow('Trajectory', width, height)
+    
     path_im = experiment.path
     path_body = experiment.body_path
     path_arm = experiment.arm_path
@@ -929,20 +941,7 @@ class Experiment(object):
         self.compute_all_trajectories()
         self.classify_events()
         self.save()
-            
-#--------------------------Script-----------------------------------------------
-"""path = os.path.join("..",'data','microglia','8_denoised')
-path_centers = os.path.join("..",'data','microglia','8_centers') 
-path_arms = os.path.join("..",'data','microglia','8_arms')    
-"""
 
-#redefine_labels(path_centers)
-"""
-experiment3 = Experiment(path,path_centers,path_arms)
-#experiment3.process_from_scratch()
-experiment3.load()
-complex_trajectories = get_complex_trajectories(experiment3)
-"""
 def classify_complex_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_complex_trajectory(complex_trajectories[i],experiment,50)
@@ -959,14 +958,20 @@ def classify_complex_trajectory(traj,experiment):
 def saveClassif(classification):
     with open('classification_results.pkl','wb') as out:
         pickle.dump(classification,out)
-        
+def saveObject(name,obj):
+    with open(name,'wb') as out:
+        pickle.dump(obj,out) 
+def loadObject(name):
+    with open(name,'rb') as out:
+        obj = pickle.load(out)
+    return obj
 def loadClassif():
     with open('classification_results.pkl','rb') as out:
         classification = pickle.load(out)
     return classification
 
 #Find all trajectories which are not complex
-def find_simple_trajectories(experiment2,complex_trajectories):
+def find_simple_trajectories(experiment,complex_trajectories):
 #1: find all trajectories involved in a complex one
     trajectories_in_complex = []
     for comp_traj in complex_trajectories:
@@ -975,13 +980,12 @@ def find_simple_trajectories(experiment2,complex_trajectories):
                 trajectories_in_complex.append(elt)
     
     trajectories_remaining = []  #This list will contain the trajectories which have not been processed yet
-    for traj_list in experiment2.trajectories:
-        print "new frame"
+    for traj_list in experiment.trajectories:
         for traj in traj_list:
             if not traj in trajectories_in_complex:
                 trajectories_remaining.append(traj)
     return trajectories_remaining
-            
+
 def classify_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_trajectory(traj,experiment,50)
@@ -1031,10 +1035,83 @@ def gaussian_score_list(path,path_bodies,nr):
     returns the maximum of this score in each segment"""
     image = m.open_frame(path,nr)
     bodies = m.open_frame(path_bodies,nr)
-    score_frame = m.where_are_gaussians(image)
-    scores = []
-    for i in range(np.max(image)):
+    bodies_proba = np.zeros(bodies.shape)
+    scores=[]
+    score_frame = m.gaussian_proba_map(image)
+    
+    for i in range(np.max(bodies)):
         score_i = np.max(score_frame[bodies==i+1])
         scores.append(score_i)
+        bodies_proba[bodies==i+1] = score_i
     return scores
-#replace_classification_results(classification_results,complex_trajectories)
+
+def gs_score_experiment(experiment):
+    """computes the gaussian score for every element of 
+    every frame of an experiment"""
+    scores_list=[]
+    for i in range(experiment.n_frames):
+        print "computation of gaussian scores in frame",i+1
+        path=experiment.path
+        body_path = experiment.body_path
+        scores = gaussian_score_list(path,body_path,i+1)
+        scores_list.append(scores)
+    return scores_list
+#scores_list = loadObject("gs_scores_exp8.pkl")
+def gs_score_trajectory(experiment,trajectory,score_list):
+    """computes the gaussian score of a trajectory in experiment,
+    using the list of gaussian scores in every frame score_list"""
+    frame = trajectory.beginning
+    traj_score=[]
+    for cell in trajectory.cells:
+        score = score_list[frame][cell.body]
+        traj_score.append(score)
+        frame+=1
+    return np.mean(traj_score)
+
+def gs_score_each_traj(experiment,simple_trajectories,score_list):
+    """given a list of simple trajectories, returns a list
+    with their mean gaussian scores"""
+    results=[]
+    for traj in simple_trajectories:
+        score = gs_score_trajectory(experiment,traj,score_list)
+        results.append(score)
+    return results
+#--------------------------Script-----------------------------------------------
+path = os.path.join("..",'data','microglia','8_denoised')
+path_centers = os.path.join("..",'data','microglia','8_centers') 
+path_arms = os.path.join("..",'data','microglia','8_arms')    
+
+#redefine_labels(path_centers)
+
+experiment3 = Experiment(path,path_centers,path_arms)
+#experiment3.process_from_scratch()
+experiment3.load()
+complex_trajectories = get_complex_trajectories(experiment3)
+
+simple_trajectories = find_simple_trajectories(experiment3,complex_trajectories)   
+#Filtering the size of simple_trajectories: keep only trajectories with more than 3 frames
+simple_trajectories = filter(lambda x: len(x.cells)>3,simple_trajectories)
+
+scores_list =  gs_score_experiment(experiment3)
+
+gs_scores = gs_score_each_traj(experiment3,simple_trajectories,scores_list)
+
+order = dict(zip(gs_scores, simple_trajectories))
+simple_trajectories.sort(key=order.get)
+gs_scores.sort()
+#Try to see wehre the limit is:
+num_traj = len(simple_trajectories)
+simple_trajectories[num_traj-8].show(experiment3,0)
+
+
+
+
+
+
+
+
+
+
+
+
+
