@@ -26,6 +26,11 @@ import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
 #import process_trajectories as pt
 
+
+monitor = get_monitors()[0]
+width_monitor = monitor.width
+height_monitor = monitor.height
+
 plt.close('all')
 
 def check_frame(nr,liste):
@@ -104,9 +109,13 @@ class Trajectory(object):
 
     def show(self,experiment,wait=50):
         """Displays on screen the tempral trajectory in experiment"""
-        monitor = get_monitors()[0]
-        width = monitor.width
-        height = monitor.height
+        if sys.platform == 'linux2':
+            width = 1366
+            height= 768
+        else:
+            monitor = get_monitors()[0]
+            width = monitor.width
+            height = monitor.height
         cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
         cv2.resizeWindow('Trajectory', width, height)
         
@@ -199,9 +208,8 @@ class Complex_Trajectory(list):
     
 def show_trajectory(traj,experiment,wait=50):
     """Displays on screen a temporal trajectory traj."""
-    monitor = get_monitors()[0]
-    width = monitor.width
-    height = monitor.height
+    width = width_monitor
+    height = height_monitor
     cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
     cv2.resizeWindow('Trajectory', width, height)
     
@@ -232,9 +240,8 @@ def show_complex_trajectory(comp_traj,experiment,wait=50):
     path_arm = experiment.arm_path
     previous = 'trajectory'
     
-    monitor = get_monitors()[0]
-    width = monitor.width
-    height = monitor.height
+    width = width_monitor
+    height = height_monitor
     cv2.namedWindow("Trajectory", cv2.WINDOW_NORMAL)
     cv2.resizeWindow('Trajectory', width, height)
     for i,elt in enumerate(comp_traj):
@@ -996,7 +1003,7 @@ def classify_trajectory(traj,experiment):
                       motile, error (r/w/t/m/e)? Press q to see the sequence again\n""")
     
     if inp=='q':
-        classify_trajectory(traj)
+        classify_trajectory(traj,experiment)
     return inp
 
 classifying = False
@@ -1009,16 +1016,7 @@ if classifying:
         inp= classify_complex_trajectory(traj,experiment3)
         if inp!='e' and inp!='q':    #otherwise it is an error
             classifications.append((inp,traj))
-classifying_normal = False
-if classifying_normal:
-    classifications_normal = []
-    for i in range(100):
-        print "index",i
-        #cv2.destroyAllWindows()
-        traj = trajectories_remaining[i]
-        inp= classify_trajectory(traj)
-        if inp!='e' and inp !='q':    #otherwise it is an error
-            classifications_normal.append((inp,traj))
+
             
 def replace_classification_results(classif_results,complex_traj):
     """Replaces the trajectories in classif_results by the ones in complex_traj"""
@@ -1063,6 +1061,7 @@ def gs_score_trajectory(experiment,trajectory,score_list):
     frame = trajectory.beginning
     traj_score=[]
     for cell in trajectory.cells:
+        print cell.body,frame,len(score_list[frame])
         score = score_list[frame][cell.body]
         traj_score.append(score)
         frame+=1
@@ -1072,14 +1071,18 @@ def gs_score_each_traj(experiment,simple_trajectories,score_list):
     """given a list of simple trajectories, returns a list
     with their mean gaussian scores"""
     results=[]
+    i=0
+
     for traj in simple_trajectories:
+        print i
+        i+=1
         score = gs_score_trajectory(experiment,traj,score_list)
         results.append(score)
     return results
 #--------------------------Script-----------------------------------------------
-path = os.path.join("..",'data','microglia','8_denoised')
-path_centers = os.path.join("..",'data','microglia','8_centers') 
-path_arms = os.path.join("..",'data','microglia','8_arms')    
+path = os.path.join("..",'data','microglia','RFP1_denoised')
+path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
+path_arms = os.path.join("..",'data','microglia','1_arms')    
 
 #redefine_labels(path_centers)
 
@@ -1089,32 +1092,101 @@ experiment3.load()
 complex_trajectories = get_complex_trajectories(experiment3)
 
 simple_trajectories = find_simple_trajectories(experiment3,complex_trajectories)   
-#Filtering the size of simple_trajectories: keep only trajectories with more than 3 frames
-simple_trajectories = filter(lambda x: len(x.cells)>3,simple_trajectories)
 
+#Filtering the size of simple_trajectories: keep only trajectories with more than 3 frames
+#simple_trajectories = filter(lambda x: len(x.cells)>3,simple_trajectories)
+print len(simple_trajectories),"number of simple trajectories"
 scores_list =  gs_score_experiment(experiment3)
 
 gs_scores = gs_score_each_traj(experiment3,simple_trajectories,scores_list)
 """Not sure that it is correctly sorted"""
-#order = dict(zip(gs_scores, simple_trajectories))
-#simple_trajectories.sort(key=order.get)
-#gs_scores.sort()
+
 traj_n_score = zip(simple_trajectories,gs_scores)
-traj_n_score.sort(key= lambda x: x[1])
-traj_n_score = [x[0] for x in traj_n_score]
+
+traj_n_score = [x[0] for x in traj_n_score if x[1]<0.9 and len(x[0].cells)>3]  #Eliminate the gaussian trajectories
+
 #Try to see wehre the limit is:
 num_traj = len(simple_trajectories)
-traj_n_score[num_traj-8].show(experiment3,0)
+#traj_n_score[num_traj-8].show(experiment3,0)
+print "after gaussian elimination:",len(traj_n_score),"remain"
 
 
+def classify_trajectory2(traj,experiment):
+    """Displays traj and prompts the user about what to do"""
+    show_trajectory(traj,experiment,50)
+    possible_answers = ['g','r','m','e','a']
+    inp = ''
+    while(not inp in possible_answers):
+        inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
+    
+    if inp=='a':
+        classify_trajectory2(traj,experiment)
+    return inp
+
+def classify_simple_trajectories(trajectories,experiment):
+    classifications_normal = []
+    for i in range(len(trajectories)):
+        print "index",i
+        #cv2.destroyAllWindows()
+        traj = trajectories[i]
+        inp= classify_trajectory2(traj,experiment)
+        if inp!='e' and inp !='a':    #otherwise it is an error
+            classifications_normal.append((inp,i))
+    return classifications_normal
+
+#if t: gaussian
+# if 
+classifs=[]
+for i in range(5):
+    beg = int(float(len(traj_n_score)*i)/5)
+    end=int(float(len(traj_n_score)*(i+1))/5)
+    print "blaaaaaa",i
+    if i==4:
+        end = len(traj_n_score)-1
+    clf1 = classify_simple_trajectories(traj_n_score[beg:end],experiment3)
+    saveObject("rfp1_simple_trajs_part"+str(i),clf1)
+    classifs.append(clf1)
+
+#WTF: index 52
+results="""eeeeeeeeeeeeeeegegegeeemeemmereererremrreeeegeeemrreereremeemeeereeeeeeeeemeermrr"""
+
+total_classifs = []
+for i in range(5):
+    beg = int(float(len(traj_n_score)*i)/5)
+    end=int(float(len(traj_n_score)*(i+1))/5)
+    if i==4:
+        end = len(traj_n_score)-1
+    new_list = classifs[i]
+    new_list = [(x,y+beg) for x,y in new_list]
+    total_classifs.extend(new_list)
+indexes_to_change = []
+total_classifs_w_traj = [(x,traj_n_score[y]) for x,y in total_classifs]
+for i,(x,elt) in enumerate(total_classifs_w_traj):
+    if x=='a':
+        new_val = classify_trajectory2(elt,experiment3)
+        indexes_to_change.append((i,new_val))
+
+corrected_classifs = total_classifs_w_traj[:]
+for i,val in indexes_to_change:
+    corrected_classifs[i] = (val,total_classifs_w_traj[i][1])
+"""
+selected_trajs = loadObject("classification_normal_exp8")
+trajecs_n_score = zip(simple_trajectories,gs_scores)
+corresp_scores = []
+for traj in selected_trajs:
+    corresp_score = [score for x,score in trajecs_n_score if x==traj[1]]
+    if len(corresp_score)!=1:
+        print "error length"
+    corresp_scores.append(corresp_score)"""
+#Experiment 8:
+#56+81 seen twice? same 63,71
+#Analysis on this dataset: we find
+#From Gaussian score>0.76, only gaussians if mini gaussian size 21
+#if mini gaussian size =11 then 0.9 is the smallest score
+
+#in simple trajectory : 74 out of 580 are medium or good, soit 12%
+
+#Experiment RFP: 163 might be ok
 
 
-
-
-
-
-
-
-
-
-
+"""Tous les ==a sont à refaire"""

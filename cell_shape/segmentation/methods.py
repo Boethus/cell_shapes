@@ -370,7 +370,7 @@ def gaussian_proba_map(img):
     """Finds the probability that each point in img is a gaussian
     returns an image with same dimensions"""
     method = 'cv2.TM_CCOEFF_NORMED'
-    sigmas = [41,31,21]
+    sigmas = [41,31,21,11]
     out = np.zeros(img.shape)
     for sigma in sigmas:
         size=3*sigma
