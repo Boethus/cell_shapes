@@ -81,13 +81,12 @@ total = np.concatenate((fv,fv2),axis=1)
 #Clustering:
 
 total = total.reshape((total.shape[1]),total.shape[0])
-"""total = total[:,2]
-total=total.reshape(-1,1)
+total = total[:,0:7]
 scaler = StandardScaler()
-total = scaler.fit_transform(total)"""
+total = scaler.fit_transform(total)
 kmeans = KMeans(n_clusters=2)
 
-kmeans.fit(total)
+predictions = kmeans.fit_predict(total)
 
 def cell_bounding_box(experiment,cell,color='green'):
     frame_number = cell.frame_number
@@ -121,13 +120,13 @@ def cell_bounding_box(experiment,cell,color='green'):
     overlay = m.cv_overlay_mask2image(sub_rois,sub_frame,color)
     return overlay
 
-def get_random_image(experiment,simple_trajs,correspondances,clf,show=False):
+def get_random_image(experiment,simple_trajs,correspondances,predictions,show=False):
     index = int(random.random()*len(correspondances))
     print index
     traj_index,cell_index = correspondances[index]
     print traj_index,cell_index
     cell = simple_trajs[traj_index][1].cells[cell_index]
-    label = clf.labels_[index]
+    label = predictions[index]
     if label==0:
         color='green'
     else:
@@ -148,20 +147,20 @@ def resize_image(image,new_size=80):
         
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
     return resized
-im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,kmeans)
+im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
 resized=resize_image(im)
 
-def show_multiple(experiment,simple_trajs,correspondances,clf):
+def show_multiple(experiment,simple_trajs,correspondances,predictions):
     """shows multiple images together"""
     size=80
     n_images = 5
     out = np.zeros((n_images*size,n_images*size,3),dtype=np.uint8)
     for i in range(n_images):
         for j in range(n_images):
-            im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,kmeans)
+            im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
             while im.size<100:
-                im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,kmeans)
+                im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
             im = resize_image(im,size)
             out[i*size:i*size+im.shape[0],j*size:j*size+im.shape[1],:]=im
     return out
-m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,kmeans))
+m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,predictions))
