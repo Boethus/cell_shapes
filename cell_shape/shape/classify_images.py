@@ -18,16 +18,16 @@ path_arms = os.path.join("..",'data','microglia','1_arms')
 
 experiment1 = Experiment(path,path_centers,path_arms)
 
-simple_trajectories1 = loadObject("corrected_classifs_normal_exp1")
+simple_trajectories1 = loadObject("corrected_normal_exp1")
 print simple_trajectories1
 print len(simple_trajectories1)
     
 path2 = os.path.join("..",'data','microglia','8_denoised')
-path_centers2 = os.path.join("..",'data','microglia','8_centers_improved') 
+path_centers2 = os.path.join("..",'data','microglia','8_centers') 
 path_arms2 = os.path.join("..",'data','microglia','8_arms')  
 experiment2 = Experiment(path2,path_centers2,path_arms2)
 
-simple_trajectories2 = loadObject("classification_normal_exp8")
+simple_trajectories2 = loadObject("corrected_normal_exp8")
 simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
 def classify_trajectories():
     pass

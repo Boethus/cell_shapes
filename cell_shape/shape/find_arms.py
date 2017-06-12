@@ -1161,8 +1161,11 @@ for i in range(5):
     new_list = classifs[i]
     new_list = [(x,y+beg) for x,y in new_list]
     total_classifs.extend(new_list)
-indexes_to_change = []
+    
 total_classifs_w_traj = [(x,traj_n_score[y]) for x,y in total_classifs]
+
+indexes_to_change = []
+
 for i,(x,elt) in enumerate(total_classifs_w_traj):
     if x=='a':
         new_val = classify_trajectory2(elt,experiment3)
