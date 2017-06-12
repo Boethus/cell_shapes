@@ -9,13 +9,40 @@ import cv2
 import numpy as np
 import methods as m
 import matplotlib.pyplot as plt
+import copy
 
 plt.close('all')
+
+def thickness_list(path,nr):
+    """Computes the thickness of each arm in a frame and returns them as
+    a list
+    Parameters:
+        -path: path to the arms stack
+        -nr: number of the frame of interst (starting from1)
+    Returns:
+        -thickness_list: a list containing in position i the thickness of
+        the arm i"""
+    arms = m.open_frame(path,nr)
+    thick = cv2.distanceTransform((arms>0).astype(np.uint8),cv2.DIST_L2,3)
+    thickness_list=[]
+    for i in range(np.max(arms)):
+        thickness = np.max(thick[arms==i+1])
+        thickness_list.append(thickness)
+    return thickness_list
 
 def centroid(img,label):
     """returns x,y the position of the centroid of label in img"""
     x,y = np.where(img==label)
     return (np.mean(x),np.mean(y))
+
+def distribution_vector(list_of_elts):
+    """returns a 3*1 vector containing [mean,min,max] of list"""
+    out = np.zeros(3)
+    if len(list_of_elts)>0:
+        out[0] = np.mean(np.asarray(list_of_elts))
+        out[1] = min(list_of_elts)
+        out[2] = max(list_of_elts)
+    return out
 
 class Feature_Extractor(object):
     """Class meant to extract features from trajectories in a certain experiment"""
@@ -37,7 +64,14 @@ class Feature_Extractor(object):
 
     def find_distance(self):
         """finds the distance of the tip (ie most distant point) of an arm to the
-        cell body"""
+        cell body
+        Returns :
+            -distance_list: a list with size nr frames in the trajectory.
+            Contains a list of arms distances in each frame
+            -trajectories_container: a list containing the trajectories,
+            each trajectory being here a tuple (frame number,arm size)
+            -distance_dict_list: a list with size nr frames in the trajectory
+            contains a list of dictionnaries associating arm label with length"""
         verification = False
         
         cells = self.trajectory.cells
@@ -71,7 +105,7 @@ class Feature_Extractor(object):
                 distances = np.sqrt((distance_x-xcb)**2+(distance_y-ycb)**2)
                 distance = np.max(distances)
                 
-                #Just used of debugging
+                #Just used fordebugging
                 if cell.frame_number==5 and verification:
                     m.si(2*body_mask+arm_mask.astype(np.uint8))
                     xd = distance_x[distances==distance]
@@ -83,6 +117,7 @@ class Feature_Extractor(object):
                 distance_dict[arm] = distance
             distance_list.append(distance_arms)
             distance_dict_list.append(distance_dict)
+        dist_dict_list = copy.deepcopy(distance_dict_list)
         #What we want out: a list of "trajectories", each of them being a list of:
         #-Frame numbers
         #-distance
@@ -106,13 +141,13 @@ class Feature_Extractor(object):
                     dicto_list = distance_dict_list[j-beginning]
                     if lab in dicto_list:
                         trajectories_list.append((j,dicto_list[lab]))
-                        #distance_dict_list[j-beginning].pop(lab)
+                        
                         to_pop_list.append((j-beginning,lab))
                 trajectories_container.append(trajectories_list)
             for k,l in to_pop_list:
                 distance_dict_list[k].pop(l)
             to_pop_list = []
-        return distance_list,trajectories_container
+        return distance_list,trajectories_container,dist_dict_list
 
     def speed(self):
         """extracts the speed profile of a trajectory. """
@@ -129,7 +164,55 @@ class Feature_Extractor(object):
             prev_position_y = new_position_y
             speeds.append(speed)
         return speeds
-    
+    def feature_vector(self,thickness_list):
+        """extracts a n dimensional feature vector for each frame. 
+        Parameters:
+            -thickness_list: a list of list with the thickness of each
+            arm in each frame
+        Returns:
+            -Arm length (mean/min/max)
+            -Arm width (mean/min_length/max_length)
+            -body radius
+            -Nr arms"""
+        n=8  #Number of parameters
+        n_cells = len(self.trajectory.cells)
+        feature_vector_total = np.zeros((n,n_cells))
+        distance_list,_,distance_dict_list = self.find_distance()
+        
+        i=0 #Iteration counter
+        for cell in self.trajectory.cells:
+            feature_vector = np.zeros(n)
+            distances = distance_list[i]
+            distance_dict = distance_dict_list[i]
+            thicknesses = thickness_list[cell.frame_number]
+            if len(distance_dict)>0:
+                min_length_arm = min(distance_dict,key=distance_dict.get)
+                max_length_arm = max(distance_dict,key=distance_dict.get)
+            else:
+                min_length_arm=0
+                max_length_arm=0
+            mean_thickness=0
+            for arm_label in cell.arms:
+                mean_thickness+=thicknesses[arm_label]
+            if len(distance_dict)>0:
+                mean_thickness/=len(distance_dict)
+            feature_vector[0:3] = distribution_vector(distances)
+            feature_vector[3] = mean_thickness
+            if len(distance_dict)>0:
+                feature_vector[4] = thicknesses[min_length_arm]
+                feature_vector[5] = thicknesses[max_length_arm]
+                
+            else:
+                feature_vector[4] = 0
+                feature_vector[5] = 0
+            body = self.open_body(cell.frame_number)
+            area=np.count_nonzero(body==(cell.body+1) )
+            feature_vector[6] = np.sqrt(area)
+            feature_vector[7] = len(cell.arms)
+            feature_vector_total[:,i]=feature_vector
+            i+=1
+        return feature_vector_total
+        
 class Complex_Feature_Extractor(Feature_Extractor):
     """Feature extractor for a complex trajectory"""
     def __init__(self,*args):

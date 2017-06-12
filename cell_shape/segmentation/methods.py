@@ -21,12 +21,6 @@ from scipy.optimize import linear_sum_assignment
 from skimage import img_as_ubyte
 #plt.close("all")
 
-def openFrame(number):
-    name = os.path.join("..","data","yoshi_mov_2",str(number)+".tif")
-    img = Image.open(name)
-    img = np.asarray(img)
-    return img
-
 def open_frame(path,number):
     """Open frame with number located at path"""
     num=str(number).zfill(3)   #Zero filling
@@ -458,7 +452,8 @@ def cv_overlay_mask2image(mask,img,color="green"):
     if mask.dtype==np.int:
         mask = mask>0
         mask = mask.astype(np.uint8)*255
-        
+    if mask.dtype==bool:
+        mask = mask.astype(np.uint8)*255
     mask = cv2.cvtColor(mask,cv2.COLOR_GRAY2BGR)
     if len(img.shape)==2:
         image=cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)

@@ -926,7 +926,7 @@ class Experiment(object):
             
     def save(self):
         name="experiment"
-        with open(os.path.join(path,name),'wb') as out:
+        with open(os.path.join(self.path,name),'wb') as out:
             pickle.dump(self.__dict__,out)
 
     def load(self):
