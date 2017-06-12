@@ -1080,6 +1080,7 @@ def gs_score_each_traj(experiment,simple_trajectories,score_list):
         results.append(score)
     return results
 #--------------------------Script-----------------------------------------------
+"""
 path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
 path_arms = os.path.join("..",'data','microglia','1_arms')    
@@ -1099,7 +1100,7 @@ print len(simple_trajectories),"number of simple trajectories"
 scores_list =  gs_score_experiment(experiment3)
 
 gs_scores = gs_score_each_traj(experiment3,simple_trajectories,scores_list)
-"""Not sure that it is correctly sorted"""
+
 
 traj_n_score = zip(simple_trajectories,gs_scores)
 
@@ -1109,7 +1110,7 @@ traj_n_score = [x[0] for x in traj_n_score if x[1]<0.9 and len(x[0].cells)>3]  #
 num_traj = len(simple_trajectories)
 #traj_n_score[num_traj-8].show(experiment3,0)
 print "after gaussian elimination:",len(traj_n_score),"remain"
-
+"""
 
 def classify_trajectory2(traj,experiment):
     """Displays traj and prompts the user about what to do"""
@@ -1120,7 +1121,7 @@ def classify_trajectory2(traj,experiment):
         inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
     
     if inp=='a':
-        classify_trajectory2(traj,experiment)
+        inp = classify_trajectory2(traj,experiment)
     return inp
 
 def classify_simple_trajectories(trajectories,experiment):
@@ -1136,6 +1137,7 @@ def classify_simple_trajectories(trajectories,experiment):
 
 #if t: gaussian
 # if 
+"""
 classifs=[]
 for i in range(5):
     beg = int(float(len(traj_n_score)*i)/5)
@@ -1148,7 +1150,7 @@ for i in range(5):
     classifs.append(clf1)
 
 #WTF: index 52
-results="""eeeeeeeeeeeeeeegegegeeemeemmereererremrreeeegeeemrreereremeemeeereeeeeeeeemeermrr"""
+results="eeeeeeeeeeeeeeegegegeeemeemmereererremrreeeegeeemrreereremeemeeereeeeeeeeemeermrr"
 
 total_classifs = []
 for i in range(5):
@@ -1169,6 +1171,8 @@ for i,(x,elt) in enumerate(total_classifs_w_traj):
 corrected_classifs = total_classifs_w_traj[:]
 for i,val in indexes_to_change:
     corrected_classifs[i] = (val,total_classifs_w_traj[i][1])
+corrected_classifs = filter((lambda x:x[0]!="e"),corrected_classifs)
+"""
 """
 selected_trajs = loadObject("classification_normal_exp8")
 trajecs_n_score = zip(simple_trajectories,gs_scores)
