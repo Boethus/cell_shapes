@@ -447,8 +447,21 @@ def overlay_mask2image(img,mask,title=None):
     plt.show()
 
 def cv_overlay_mask2image(mask,img,color="green"):
-    """Overlay a mask to an image using opencv"""
+    """Overlay a mask to an image using opencv. Assumes that we work in BGR
+    Color space"""
     transparency=0.2
+    colors= {
+            "green":[0,1,0],
+             "blue":[1,0,0],
+             "red":[0,0,1],
+             "purple":[1,0,0.5],
+             "yellow":[0,1,1],
+             "pink":[1,0,1]
+             }
+    if color in colors:
+        factors = colors[color]
+    else:
+        factors = colors['pink']
     if mask.dtype==np.int:
         mask = mask>0
         mask = mask.astype(np.uint8)*255
@@ -459,12 +472,13 @@ def cv_overlay_mask2image(mask,img,color="green"):
         image=cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)
     else:
         image=img.copy()
-    if color=="green":
-        mask[:,:,0]=0
-        mask[:,:,2]=0
-    else:
-        mask[:,:,0]=0
-        mask[:,:,1]=0
+        
+    for i in range(3):
+        factor=factors[i]
+        if type(factor)!=float:
+            mask[:,:,i]*=factor
+        else:
+            mask[:,:,i]/=int(1/factor)
     cv2.addWeighted(mask,transparency,image,1-transparency,0,image)
     return image
 

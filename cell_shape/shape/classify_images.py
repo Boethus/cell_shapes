@@ -18,31 +18,11 @@ import methods as m
 import cv2
 import matplotlib.pyplot as plt
 
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path_arms = os.path.join("..",'data','microglia','1_arms')  
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
-experiment1 = Experiment(path,path_centers,path_arms)
-experiment1.load()
-#experiment1.track_arms_and_centers()
-simple_trajectories1 = loadObject("corrected_normal_exp1")
-simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
-
-path2 = os.path.join("..",'data','microglia','8_denoised')
-path_centers2 = os.path.join("..",'data','microglia','8_centers') 
-path_arms2 = os.path.join("..",'data','microglia','8_arms')  
-experiment2 = Experiment(path2,path_centers2,path_arms2)
-experiment2.load()
-simple_trajectories2 = loadObject("corrected_normal_exp8")
-simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
-
-#Vector correspondance returns for each index of frame processed, a tuple
-#(position in traj list,position of frame in traj)
-vector_correspondance_1 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories1)]
-correspondance1=[]
-for lists in vector_correspondance_1:
-    correspondance1.extend(lists)
-
+import random
+    
 def get_all_thicknesses(experiment):
     all_thickness_list = []
     for i in range(1,242):
@@ -71,25 +51,7 @@ def extract_feature_vectors(experiment,simple_trajectories):
     return feature_vector
  
     
-fv = extract_feature_vectors(experiment1,simple_trajectories1)
-fv2 = extract_feature_vectors(experiment2,simple_trajectories2)
 
-
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-
-import random
-total = np.concatenate((fv,fv2),axis=1)
-
-#Clustering:
-
-total = total.reshape((total.shape[1]),total.shape[0])
-total = total[:,0:7]
-scaler = StandardScaler()
-total = scaler.fit_transform(total)
-kmeans = KMeans(n_clusters=2)
-
-predictions = kmeans.fit_predict(total)
 
 def cell_bounding_box(experiment,cell,color='green'):
     frame_number = cell.frame_number
@@ -125,16 +87,11 @@ def cell_bounding_box(experiment,cell,color='green'):
 
 def get_random_image(experiment,simple_trajs,correspondances,predictions,show=False):
     index = int(random.random()*len(correspondances))
-    print index
     traj_index,cell_index = correspondances[index]
-    print traj_index,cell_index
     cell = simple_trajs[traj_index][1].cells[cell_index]
+    colors = ['green','red','blue','pink','yellow']
     label = predictions[index]
-    if label==0:
-        color='green'
-    else:
-        color='red'
-    image = cell_bounding_box(experiment,cell,color)
+    image = cell_bounding_box(experiment,cell,colors[label%len(colors)])
     if show:
         plt.imshow(image,cmap='gray')
         plt.title(str(label))
@@ -150,8 +107,6 @@ def resize_image(image,new_size=80):
         
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
     return resized
-im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
-resized=resize_image(im)
 
 def show_multiple(experiment,simple_trajs,correspondances,predictions):
     """shows multiple images together"""
@@ -166,28 +121,113 @@ def show_multiple(experiment,simple_trajs,correspondances,predictions):
             im = resize_image(im,size)
             out[i*size:i*size+im.shape[0],j*size:j*size+im.shape[1],:]=im
     return out
-m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,predictions))
 
-def test_correspondance(experiment,predictions,kmeans):
+def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
+    """shows multiple images together. This method of display respects the scales of each 
+    image."""
+    n_images = 5
+    im_list = []
+    max_dim1=0
+    max_dim2=0
+    dims1=[]
+    dims2=[]
+    for i in range(n_images**2):
+        im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
+        im_list.append(im)
+        #dims1.append()
+        max_dim1 = max(im.shape[0],max_dim1)
+        max_dim2 = max(im.shape[1],max_dim2)
+    out = np.zeros((max_dim1*n_images,max_dim2*n_images,3),dtype=np.uint8)
+    for i in range(n_images**2):
+        k=i//n_images
+        l=i%n_images
+        out[k*max_dim1:k*max_dim1 + im_list[i].shape[0], l*max_dim2:l*max_dim2 + im_list[i].shape[1],:] = im_list[i]
+    return out
+
+
+#all_thickness_list = get_all_thicknesses(experiment1)
+
+def test_correspondance(experiment,predictions,kmeans,all_thickness_list,correspondances):
     """Check that the predictions correspond to te actual cell"""
-    index=0
-    traj = simple_trajectories1[index][1]
+    index=int(random.random()*len(correspondances))
+    index_traj,index_cell = correspondances[index]
+    
+    indices_traj = [i for i,(ind_traj,ind_cell) in enumerate(correspondances) if ind_traj==index_traj]
+
+
+    traj = simple_trajectories1[index_traj][1]
+
     fe = Feature_Extractor(experiment)
     fe.set_trajectory(traj)
     vector = fe.feature_vector(all_thickness_list)
     vector = vector.transpose()
     vector = vector[:,0:7]
-    print vector
+    vector=scaler.transform(vector)
     new_predictions = kmeans.predict(vector)
+    cell_prediction = new_predictions[index_cell]
     
-    n=len(traj.cells)
-    corresp_predict = predictions[0:n]
-    test= corresp_predict==new_predictions
-    test = [x for x in test if not x]
-    if len(test)==0:
-        print "test passed, all predictions correspond"
+    
+    test= cell_prediction==predictions[index]
+    test2 = predictions[np.asarray(indices_traj)]==new_predictions
+    if test:
+        print "test passed"
     else:
-        print "test failed"
+        print "test failed, index",index
+    if False in test2:
+        print "test2 failed"
         print new_predictions
-        print corresp_predict
-test_correspondance(experiment1,predictions,kmeans)
+        print predictions[np.asarray(indices_traj)]
+    else:
+        print "test2 passed"
+path = os.path.join("..",'data','microglia','RFP1_denoised')
+path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
+path_arms = os.path.join("..",'data','microglia','1_arms')  
+
+experiment1 = Experiment(path,path_centers,path_arms)
+experiment1.load()
+#experiment1.track_arms_and_centers()
+simple_trajectories1 = loadObject("corrected_normal_exp1")
+simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
+
+path2 = os.path.join("..",'data','microglia','8_denoised')
+path_centers2 = os.path.join("..",'data','microglia','8_centers') 
+path_arms2 = os.path.join("..",'data','microglia','8_arms')  
+experiment2 = Experiment(path2,path_centers2,path_arms2)
+experiment2.load()
+simple_trajectories2 = loadObject("corrected_normal_exp8")
+simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
+
+#Vector correspondance returns for each index of frame processed, a tuple
+#(position in traj list,position of frame in traj)
+vector_correspondance_1 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories1)]
+correspondance1=[]
+for lists in vector_correspondance_1:
+    correspondance1.extend(lists)
+
+vector_correspondance_2 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories2)]
+correspondance2=[]
+for lists in vector_correspondance_2:
+    correspondance2.extend(lists)
+    
+fv = extract_feature_vectors(experiment1,simple_trajectories1)
+fv2 = extract_feature_vectors(experiment2,simple_trajectories2)
+
+fv=fv.transpose()
+fv2=fv2.transpose()
+
+total = np.concatenate((fv,fv2),axis=0)
+
+#Clustering:
+
+#total = total.reshape((total.shape[1]),total.shape[0])
+#total = total[:,0:7]
+scaler = StandardScaler()
+total = scaler.fit_transform(total)
+kmeans = KMeans(n_clusters=4)
+
+predictions = kmeans.fit_predict(total)
+
+cv2.imshow("Frames classified",show_multiple(experiment1,simple_trajectories1,correspondance1,predictions))
+m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,predictions),title='3-class classification of cell morphology')
+
+cv2.imshow("Frames classified",show_multiple_on_scale(experiment1,simple_trajectories1,correspondance1,predictions))

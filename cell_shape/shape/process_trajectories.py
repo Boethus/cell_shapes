@@ -199,8 +199,8 @@ class Feature_Extractor(object):
             feature_vector[0:3] = distribution_vector(distances)
             feature_vector[3] = mean_thickness
             if len(distance_dict)>0:
-                feature_vector[4] = thicknesses[min_length_arm]
-                feature_vector[5] = thicknesses[max_length_arm]
+                feature_vector[4] = min(thicknesses)
+                feature_vector[5] = max(thicknesses)
                 
             else:
                 feature_vector[4] = 0
