@@ -42,7 +42,13 @@ vector_correspondance_1 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) fo
 correspondance1=[]
 for lists in vector_correspondance_1:
     correspondance1.extend(lists)
-    
+
+def get_all_thicknesses(experiment):
+    all_thickness_list = []
+    for i in range(1,242):
+        print i
+        all_thickness_list.append( thickness_list(experiment.arm_path,i))
+    return all_thickness_list
 
 def extract_feature_vectors(experiment,simple_trajectories):
     """Extracts the n dimensional feature vector from predefined trajectories and returns them as 
@@ -50,17 +56,14 @@ def extract_feature_vectors(experiment,simple_trajectories):
     feature_extractor = Feature_Extractor(experiment)
     
     #Compute first feature vector to initialize the array
-    first_traj = simple_trajectories.pop(0)
+    first_traj = simple_trajectories[0]
     first_traj = first_traj[1]
     feature_extractor.set_trajectory(first_traj)
     print "computing all thicknesses list"
-    all_thickness_list = []
-    for i in range(1,242):
-        print i
-        all_thickness_list.append( thickness_list(experiment.arm_path,i))
-    print "first feature vector"
+    all_thickness_list = get_all_thicknesses(experiment)
     feature_vector=feature_extractor.feature_vector(all_thickness_list)
-    for mark,traj in simple_trajectories:
+    for i in range(1,len(simple_trajectories)):
+        traj = simple_trajectories[i][1]
         print "in simple trajectories loop"
         feature_extractor.set_trajectory(traj)
         new_vector = feature_extractor.feature_vector(all_thickness_list)
@@ -164,3 +167,27 @@ def show_multiple(experiment,simple_trajs,correspondances,predictions):
             out[i*size:i*size+im.shape[0],j*size:j*size+im.shape[1],:]=im
     return out
 m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,predictions))
+
+def test_correspondance(experiment,predictions,kmeans):
+    """Check that the predictions correspond to te actual cell"""
+    index=0
+    traj = simple_trajectories1[index][1]
+    fe = Feature_Extractor(experiment)
+    fe.set_trajectory(traj)
+    vector = fe.feature_vector(all_thickness_list)
+    vector = vector.transpose()
+    vector = vector[:,0:7]
+    print vector
+    new_predictions = kmeans.predict(vector)
+    
+    n=len(traj.cells)
+    corresp_predict = predictions[0:n]
+    test= corresp_predict==new_predictions
+    test = [x for x in test if not x]
+    if len(test)==0:
+        print "test passed, all predictions correspond"
+    else:
+        print "test failed"
+        print new_predictions
+        print corresp_predict
+test_correspondance(experiment1,predictions,kmeans)
