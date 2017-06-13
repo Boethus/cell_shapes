@@ -285,7 +285,7 @@ def write_movie(experiment,name,simple_trajectories,predictions,correspondances)
         out = np.zeros((frame.shape[0],frame.shape[1],3),dtype=np.uint8)
         for cell,pred in cells:
             
-            mask[:,:,pred] = (body==cell.body+1).astype(np.uint8)
+            mask[:,:,pred] += (body==cell.body+1).astype(np.uint8)
             for elt in cell.arms:
                 mask[:,:,pred]+=(arm==elt+1).astype(np.uint8)
         mask*=255
