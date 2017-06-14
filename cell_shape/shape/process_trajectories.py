@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import copy
 
 plt.close('all')
-
+#-------------Helper functions------------------------------------
 def thickness_list(path,nr):
     """Computes the thickness of each arm in a frame and returns them as
     a list
@@ -43,7 +43,7 @@ def distribution_vector(list_of_elts):
         out[1] = min(list_of_elts)
         out[2] = max(list_of_elts)
     return out
-
+#------------------Feature extractors--------------------------------------
 class Feature_Extractor(object):
     """Class meant to extract features from trajectories in a certain experiment"""
     def __init__(self,experiment):
@@ -87,18 +87,18 @@ class Feature_Extractor(object):
             frame_arm = self.open_arm(frame_number)-1
             body_mask = (frame_body==body).astype(np.uint8)
             xcb,ycb = centroid(frame_body,body)
-            kernel = np.ones((5,5),np.uint8)
-            dilation = cv2.dilate(body_mask,kernel,iterations = 1)
+            """kernel = np.ones((5,5),np.uint8)
+            dilation = cv2.dilate(body_mask,kernel,iterations = 1)"""
             distance_arms=[]
             distance_dict = {}
             for arm in arms:
                 arm_mask = frame_arm==arm
-                arm_root = dilation.copy()
+                """arm_root = dilation.copy()
                 arm_root[~arm_mask]=0
                 #(xc,yc are approximately the coordinates of the contact between arm and body)
                 xc,yc = np.where(arm_root!=0)
                 xc = np.mean(xc)
-                yc = np.mean(yc)
+                yc = np.mean(yc)"""
                 
                 #Compute the distance between each pixel in arm and the root
                 distance_x,distance_y = np.where(arm_mask)

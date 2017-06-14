@@ -6,9 +6,9 @@ Created on Mon Jun 12 09:06:21 2017
 @author: aurelien
 """
 
-"""The idea behind this script is to extracta certainamount of features from
+"""The idea behind this script is to extract a certain amount of features from
 each frame from each trajectories and to cluster them together. Hopefully
-this will givea consistent result"""
+this will give a consistent result"""
 from find_arms import Experiment,loadObject
 from find_arms import *
 from process_trajectories import Feature_Extractor,thickness_list
@@ -32,7 +32,13 @@ def get_all_thicknesses(experiment):
 
 def extract_feature_vectors(experiment,simple_trajectories):
     """Extracts the n dimensional feature vector from predefined trajectories and returns them as 
-    an unique array for clustering"""
+    an unique array for clustering
+    Parameters:
+        experiment: instance of the class Experiment
+        simple_trajectories: list of simple trajectories
+    Returns:
+        feature_vector: (n_features*n_cells) numpy array
+        """
     feature_extractor = Feature_Extractor(experiment)
     
     #Compute first feature vector to initialize the array
@@ -54,6 +60,15 @@ def extract_feature_vectors(experiment,simple_trajectories):
 
 
 def cell_bounding_box(experiment,cell,color='green'):
+    """given a cell in an experiment, returns a picture centered on this cell
+    overlaid with a certain color
+    Parameters:
+        experiment: instance of the class Experiment
+        cell: instance of the class Cell, found in experiment
+        color: string, specifies the color which needs to be overlaid.
+    Returns:
+        overlay: 3-D numpy array, image of the cell with a color mask
+    """
     frame_number = cell.frame_number
     frame = m.open_frame(experiment.path,frame_number+1)
     body = m.open_frame(experiment.body_path,frame_number+1)
@@ -86,6 +101,20 @@ def cell_bounding_box(experiment,cell,color='green'):
     return overlay
 
 def get_random_image(experiment,simple_trajs,correspondances,predictions,show=False):
+    """Returns a random image centered on a cell in a list of trajectories
+    Parameters: 
+        experiment: instance of the class Experiment
+        simple_trajs: list of trajectories
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+        predictions: numpy array containing the predicted class of each cell
+        show: bool, if True shows the image in a pyplot window
+    Returns:
+        image: numpy array, image centered on a cell with a color corresponding
+            to its class
+        label: int, specifies the class of the cell displayed
+    """
+    
     index = int(random.random()*len(correspondances))
     traj_index,cell_index = correspondances[index]
     cell = simple_trajs[traj_index][1].cells[cell_index]
@@ -98,6 +127,12 @@ def get_random_image(experiment,simple_trajs,correspondances,predictions,show=Fa
     return image,label
 
 def resize_image(image,new_size=80):
+    """
+    Parameters:
+        image: 2-D or 3-D numpy array
+        new_size : int, gives the desired maximum dimension
+    Returns:
+        resized: numpy array"""
     if image.shape[1]>image.shape[0]:
         r = float(new_size)/ image.shape[1]
         dim = (new_size,int(image.shape[0] * r))
@@ -124,7 +159,14 @@ def show_multiple(experiment,simple_trajs,correspondances,predictions):
 
 def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
     """shows multiple images together. This method of display respects the scales of each 
-    image."""
+    image.
+    Paramters:
+        experiemnt: instance of the Experiment class
+        simple_trajs: list of simple trajectories
+        correspondances: list of tuples (trajectory_index,cell_index)
+        predictions: numpy array containing the predicted class of each cell
+    Returns:
+        out: composite image of classified cells"""
     n_images = 5
     im_list = []
     max_dim1=0
@@ -141,6 +183,52 @@ def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
         out[k*max_dim1:k*max_dim1 + im_list[i].shape[0], l*max_dim2:l*max_dim2 + im_list[i].shape[1],:] = im_list[i]
     return out
 
+def write_movie(experiment,name,simple_trajectories,predictions,correspondances):
+    """Overlays all shape classifications to an entire movie, and writes it in 
+    a new folder
+    Parameters:
+        experiment: instance of the class Experiment
+        name: string, name of the folder where the new movie will be written
+        simple_trajectories: list of Trajectory
+        predictions: numpy array containing the predicted class of each cell
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+    """
+            
+    path = os.path.join("..","data","microglia",name)
+    colors = ['green','red','blue','pink','yellow']
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    #Separate each cell from each trajectory
+    cell_list=[]
+    for i in range(241):
+        cell_list.append([])
+        #Copy the frames in new directory. these frames will be modified by the loop
+        frame = m.open_frame(experiment.path,i+1)
+        cv2.imwrite(os.path.join(path,str(i+1)+".png"),frame)
+        
+    for i,(index_traj,index_cell) in enumerate(correspondances):
+        traj = simple_trajectories[index_traj][1]
+        cell=traj.cells[index_cell]
+        pred = predictions[i]
+        cell_list[cell.frame_number].append((cell,pred))
+    n_pred = np.max(predictions)+1
+    for frame_nr,cells in enumerate(cell_list):
+        print "processing frame nr",frame_nr+1
+        frame = m.open_frame(path,frame_nr+1)
+        body = m.open_frame(experiment.body_path,frame_nr+1)
+        arm = m.open_frame(experiment.arm_path,frame_nr+1)
+        mask = np.zeros((frame.shape[0],frame.shape[1],n_pred),dtype=np.uint8)
+        out = np.zeros((frame.shape[0],frame.shape[1],3),dtype=np.uint8)
+        for cell,pred in cells:
+            
+            mask[:,:,pred] += (body==cell.body+1).astype(np.uint8)
+            for elt in cell.arms:
+                mask[:,:,pred]+=(arm==elt+1).astype(np.uint8)
+        mask*=255
+        for i in range(n_pred):
+            out+= m.cv_overlay_mask2image(mask[:,:,i],frame,color=colors[i])/n_pred
+        cv2.imwrite(os.path.join(path,str(frame_nr+1)+".png"),out)
 
 #all_thickness_list = get_all_thicknesses(experiment1)
 
@@ -240,56 +328,124 @@ relative to arms length seem to be the most pysically relevant"""
 
 def separate_trajectories(predictions,correspondances):
     """Separate the trajectories between the ones staying in a constant class and
-    the ones which change class"""
+    the ones which change class.
+    Parameters:
+        predictions: an array containing the classification results
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+    Returns:
+        is_constant_class: array of bools, equal to True if all the cells 
+            in the corresponding trajectory are classified as the same
+        predictions_traj: list of arrays containing the prediction for each cell 
+            of each trajectory
+            """
     size = correspondances[-1][0]+1
     is_constant_class = np.zeros(size,dtype=bool) #Each element is 0 if not constant, True if constant
-    
+    predictions_traj = []
     for i in range(size):
         indices_traj = [j for j,(ind_traj,ind_cell) in enumerate(correspondances) if ind_traj==i]
         indices_traj = np.asarray(indices_traj)
         predictions_i = predictions[indices_traj]
+        predictions_traj.append(predictions_i)
         print predictions_i
         values_pred = np.unique(predictions_i)
         if values_pred.size==1:
             is_constant_class[i]=True
-    return is_constant_class
+    return is_constant_class,predictions_traj
 
-d=separate_trajectories(predictions,correspondance1)
+d,preds=separate_trajectories(predictions,correspondance1)
 print np.count_nonzero(d),d.size
 
-def write_movie(experiment,name,simple_trajectories,predictions,correspondances):
-    path = os.path.join("..","data","microglia",name)
+def bounding_box(experiment,cell):
+    """ Returns the position of the rectangular contour of a cell
+    """
+    frame_number = cell.frame_number
+    body = m.open_frame(experiment.body_path,frame_number+1)
+    arm = m.open_frame(experiment.arm_path,frame_number+1)
+    
+    rois = body==(cell.body+1)
+    for elt in cell.arms:
+        rois = np.logical_or(rois,arm==elt+1)
+    im2,contours,hierarchy = cv2.findContours((rois).astype(np.uint8), 1, 2)
+    if len(contours)==1:
+        cnt = contours[0]
+    else:
+        #If find several contours, takes the largest
+        widths=[]
+        for i in range(len(contours)):
+            cnt = contours[i]
+            x,y,w,h = cv2.boundingRect(cnt)
+            widths.append(w)
+        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+        indices = indices[0]
+        cnt = contours[indices]
+    
+    x,y,w,h = cv2.boundingRect(cnt)
+    return x,y,w,h
+
+def extract_trajectory_movie(experiment,name,trajectory,preds):
     colors = ['green','red','blue','pink','yellow']
+    min_x = 5000
+    min_y = 5000
+    max_x = 0
+    max_y = 0
+    
+    path = os.path.join("..","data","microglia",name)
     if not os.path.isdir(path):
         os.mkdir(path)
-    #Separate each cell from each trajectory
-    cell_list=[]
-    for i in range(241):
-        cell_list.append([])
-        #Copy the frames in new directory. these frames will be modified by the loop
-        frame = m.open_frame(experiment.path,i+1)
-        cv2.imwrite(os.path.join(path,str(i+1)+".png"),frame)
+        
+    for i,cell in enumerate(trajectory.cells):
+        x,y,w,h = bounding_box(experiment,cell)
+        min_x = min(min_x,x)
+        min_y = min(min_y,y)
+        
+        max_x = max(max_x,x+w)
+        max_y = max(max_y,y+h)
+    for i,cell in enumerate(trajectory.cells):
+        frame_number = cell.frame_number
+        frame = m.open_frame(experiment.path,frame_number+1)
+        body = m.open_frame(experiment.body_path,frame_number+1)
+        arm = m.open_frame(experiment.arm_path,frame_number+1)
+
+        frame = frame[min_y:max_y,min_x:max_x]
+        body = body[min_y:max_y,min_x:max_x]
+        arm = arm[min_y:max_y,min_x:max_x]
+        mask = (body ==(cell.body+1)).astype(np.uint8)
+        for elt in cell.arms:
+            mask+=(arm==elt+1).astype(np.uint8)
+        out = m.cv_overlay_mask2image(mask*255,frame,color=colors[preds[i]])
+        cv2.imwrite(os.path.join(path,str(i)+".png"),out)
+extract_trajectory_movie(experiment1,"retractation",simple_trajectories1[2][1],preds[2])
+#write_movie(experiment1,"movie_shapes",simple_trajectories1,predictions,correspondance1)
+
+predictions1=predictions[0:len(correspondance1)]
+predictions2=predictions[len(correspondance1):]
+
+def temporal_evolution(experiment,simple_trajectories,predictions,correspondances):
+    """Monitors the temporal evolution in terms of number of cells per class
+    """
+    class_list=[]
+    for i in range(experiment.n_frames-1):
+        class_list.append([])
         
     for i,(index_traj,index_cell) in enumerate(correspondances):
         traj = simple_trajectories[index_traj][1]
         cell=traj.cells[index_cell]
         pred = predictions[i]
-        cell_list[cell.frame_number].append((cell,pred))
-    n_pred = np.max(predictions)+1
-    for frame_nr,cells in enumerate(cell_list):
-        print "processing frame nr",frame_nr+1
-        frame = m.open_frame(path,frame_nr+1)
-        body = m.open_frame(experiment.body_path,frame_nr+1)
-        arm = m.open_frame(experiment.arm_path,frame_nr+1)
-        mask = np.zeros((frame.shape[0],frame.shape[1],n_pred),dtype=np.uint8)
-        out = np.zeros((frame.shape[0],frame.shape[1],3),dtype=np.uint8)
-        for cell,pred in cells:
-            
-            mask[:,:,pred] += (body==cell.body+1).astype(np.uint8)
-            for elt in cell.arms:
-                mask[:,:,pred]+=(arm==elt+1).astype(np.uint8)
-        mask*=255
-        for i in range(n_pred):
-            out+= m.cv_overlay_mask2image(mask[:,:,i],frame,color=colors[i])/n_pred
-        cv2.imwrite(os.path.join(path,str(frame_nr+1)+".png"),out)
-write_movie(experiment1,"movie_shapes",simple_trajectories1,predictions,correspondance1)
+        class_list[cell.frame_number].append(pred)
+    
+    n_classes=np.max(predictions)+1
+    fractions = np.zeros((experiment.n_frames,n_classes))
+    for i,classes in enumerate(class_list):
+        elements = np.asarray(classes)
+        n_elts_in_frame = elements.size
+        for j in range(n_classes):
+            fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
+    return fractions
+
+f = temporal_evolution(experiment1,simple_trajectories2,predictions2,correspondance2)
+
+plt.figure()
+for i in range(3):
+    plt.plot(f[:,i])
+    

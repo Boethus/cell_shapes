@@ -218,6 +218,7 @@ def hysteresis_thresholding(image,th1,th2):
         A weak one: pixels whose value is above the small threshold but below
         the strong threshold are selected only if they are in contact with pixels
         selected by the strong threshold."""
+    #skimage.filters.apply_hysteresis_threshold(image,low,high)
     hard_th = (image>max(th1,th2)).astype(np.uint8)*255
     soft_th = (image>min(th1,th2)).astype(np.uint8)*255
     added_elements = np.zeros(image.shape,dtype=np.uint8)
