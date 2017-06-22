@@ -149,21 +149,26 @@ class Feature_Extractor(object):
             to_pop_list = []
         return distance_list,trajectories_container,dist_dict_list
 
-    def speed(self):
-        """extracts the speed profile of a trajectory. """
-        cells = self.trajectory.cells
-        length = len(cells)
-        first_body = self.open_body(cells[0].frame_number)
-        prev_position_x,prev_position_y = centroid(first_body,cells[0].body+1)
-        speeds = []
-        for i in range (1,length):
-            body_img = self.open_body(cells[i].frame_number)
-            new_position_x,new_position_y = centroid(body_img,cells[i].body+1)
-            speed = np.sqrt((new_position_x-prev_position_x)**2 + (new_position_y-prev_position_y)**2)
-            prev_position_x = new_position_x
-            prev_position_y = new_position_y
-            speeds.append(speed)
-        return speeds
+    def plot_distances(self,size_filter=0,new_fig=True):
+        """Plots the distances profiles for all arms trajectories longer than
+        size filter"""
+        _,traj_list,_ = self.find_distance()
+        print traj_list
+        if new_fig:
+            plt.figure()
+            plt.title("Evolution of ramification length")
+            plt.ylabel("length")
+            plt.xlabel("frame nr")
+            
+        for lists in traj_list:
+            x=[]
+            y=[]
+            if len(lists)>size_filter:   #show only longer, relevant trajectories
+                for (u,v) in lists:
+                    x.append(u)
+                    y.append(v)
+                    plt.plot(x,y)
+                    
     def feature_vector(self,thickness_list):
         """extracts a n dimensional feature vector for each frame. 
         Parameters:
@@ -312,4 +317,22 @@ def plot_multiple_caracs(experiment, classification_results,x,y,carac="distance"
         #plt.title(str(i)+"Class: "+classification_results[i][0])
 
 
-            
+def plot_caracs(experiment, classification_results,x,y,carac="distance"):
+    ce = Feature_Extractor(experiment)
+    
+    plt.figure()
+    if carac=="distance":
+        plt.suptitle("Evolution fo distance arms-body with time")
+    else:
+        plt.suptitle("Speed profiles")
+    for i in range(x*y):
+        plt.subplot(x,y,i+1)
+        ce.set_trajectory(classification_results[i][1])
+        if carac=="distance":
+            ce.plot_distances(new_fig=False)
+        else:
+            plt.plot(ce.speed())            
+"""
+ce = Feature_Extractor(experiment1)
+ce.set_trajectory(simple_trajectories1[15][1])
+ce.plot_distances()"""

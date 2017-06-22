@@ -315,7 +315,7 @@ total2[:,3]=total[:,3]
 total=total2"""
 scaler = StandardScaler()
 total = scaler.fit_transform(total)
-kmeans = KMeans(n_clusters=3,n_init=400)
+kmeans = KMeans(n_clusters=4,n_init=400)
 
 predictions = kmeans.fit_predict(total)
 
@@ -358,6 +358,12 @@ print np.count_nonzero(d),d.size
 
 def bounding_box(experiment,cell):
     """ Returns the position of the rectangular contour of a cell
+    Parameters:
+        experiment: instance of the class Experiment
+        cell: instance of the class Cell whose bounding box we want to extract
+    Return:
+        (x,y,w,h): tuple, (x,y) and (x+w,y+h) defining two opposite corners
+        of the bounding box of the cell
     """
     frame_number = cell.frame_number
     body = m.open_frame(experiment.body_path,frame_number+1)
@@ -415,7 +421,24 @@ def extract_trajectory_movie(experiment,name,trajectory,preds):
             mask+=(arm==elt+1).astype(np.uint8)
         out = m.cv_overlay_mask2image(mask*255,frame,color=colors[preds[i]])
         cv2.imwrite(os.path.join(path,str(i)+".png"),out)
-extract_trajectory_movie(experiment1,"retractation",simple_trajectories1[2][1],preds[2])
+
+"""
+for i in range(40):
+    extract_trajectory_movie(experiment1,"cellShape"+str(10+i),simple_trajectories1[10+i][1],preds[10+i])
+    
+path_results = "/home/aurelien/Documents/rotation1/cell_shape/data/results/trajectories_classified/"
+for i in range(40):
+    num=i+10
+    curr_path=os.path.join(path_results,"cellShape"+str(num),"curves")
+    if not os.path.isdir(curr_path):
+        os.mkdir(curr_path)
+    fig=plt.figure()
+    ce = Feature_Extractor(experiment1)
+    ce.set_trajectory(simple_trajectories1[num][1])
+    ce.plot_distances(new_fig=False)
+    fig.savefig(os.path.join(curr_path,"distances.png"))
+    plt.close(fig)
+"""
 #write_movie(experiment1,"movie_shapes",simple_trajectories1,predictions,correspondance1)
 
 predictions1=predictions[0:len(correspondance1)]
@@ -443,9 +466,124 @@ def temporal_evolution(experiment,simple_trajectories,predictions,correspondance
             fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
     return fractions
 
-f = temporal_evolution(experiment1,simple_trajectories2,predictions2,correspondance2)
+f2 = temporal_evolution(experiment2,simple_trajectories2,predictions2,correspondance2)
+f1 = temporal_evolution(experiment1,simple_trajectories1,predictions1,correspondance1)
 
 plt.figure()
 for i in range(3):
-    plt.plot(f[:,i])
+    plt.plot(f1[:,i])
+
+frac0_1 = float(np.count_nonzero(predictions1==0))/predictions1.size
+frac0_2 = float(np.count_nonzero(predictions2==0))/predictions2.size
+
+frac1_1 = float(np.count_nonzero(predictions1==1))/predictions1.size
+frac1_2 = float(np.count_nonzero(predictions2==1))/predictions2.size
+
+frac2_1 = float(np.count_nonzero(predictions1==2))/predictions1.size
+frac2_2 = float(np.count_nonzero(predictions2==2))/predictions2.size
+
+def get_arms_list_per_frame(experiment,simple_trajectories):
+    """Extracts all arms from a set of manually selected trajectories and
+    saves them in a folder
+    """
+    arms_list=[]
+    for i in range(experiment.n_frames-1):
+        arms_list.append([])
     
+    if type(simple_trajectories[0])==tuple:
+        simple_trajs = [y for x,y in simple_trajectories]
+    else:
+        simple_trajs = simple_trajectories
+       
+    for traj in simple_trajs:
+        for cell in traj.cells:
+            frame_number= cell.frame_number
+            for arm in cell.arms:
+                arms_list[frame_number].append(arm)
+    return arms_list
+
+def arm_bb(experiment,frame_number,arm_label):
+    """ Returns an image of an arm only using its label and frame number
+    """
+    frame = m.open_frame(experiment.path,frame_number+1)
+    arm = m.open_frame(experiment.arm_path,frame_number+1)
+    
+    roi = arm==arm_label
+    im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
+    if len(contours)==1:
+        cnt = contours[0]
+    else:
+        #If find several contours, takes the largest
+        widths=[]
+        for i in range(len(contours)):
+            cnt = contours[i]
+            x,y,w,h = cv2.boundingRect(cnt)
+            widths.append(w)
+        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+        indices = indices[0]
+        cnt = contours[indices]
+    
+    x,y,w,h = cv2.boundingRect(cnt)
+    sub_frame = frame[y:y+h,x:x+w]
+    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
+    sub_roi = roi[y:y+h,x:x+w]
+    sub_frame[sub_roi==0]=0
+    return sub_frame
+
+out_arms=get_arms_list_per_frame(experiment1,simple_trajectories1)
+m.si(arm_bb(experiment1,0,out_arms[0][0]))
+
+def get_longer_arm(experiment,frame_number,arm_labels):
+    """ Returns an image of an arm only using its label and frame number
+    """
+    frame = m.open_frame(experiment.path,frame_number+1)
+    arm = m.open_frame(experiment.arm_path,frame_number+1)
+    length_list = []
+    for arm_label in arm_labels[frame_number]:
+        roi = arm==arm_label
+        im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
+        if len(contours)==1:
+            cnt = contours[0]
+        else:
+            #If find several contours, takes the largest
+            widths=[]
+            for i in range(len(contours)):
+                cnt = contours[i]
+                x,y,w,h = cv2.boundingRect(cnt)
+                widths.append(w)
+            indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+            indices = indices[0]
+            cnt = contours[indices]
+        
+        x,y,w,h = cv2.boundingRect(cnt)
+        length_list.append(max(w,h))
+    max_size = max(length_list) 
+    index_max_size = [i for i,z in enumerate(length_list) if z==max_size]
+    for i in index_max_size:
+        m.si(arm_bb(experiment,frame_number,arm_labels[frame_number][i]),title="size: "+str(max_size))
+    return arm_bb(experiment,frame_number,arm_labels[frame_number][index_max_size[0]])
+
+def make_square_image(image,new_size=80):
+    """
+    Parameters:
+        image: 2-D or 3-D numpy array
+        new_size : int, gives the desired maximum dimension
+    Returns:
+        resized: numpy array"""
+    if image.shape[1]>image.shape[0]:
+        r = float(new_size)/ image.shape[1]
+        dim = (new_size,int(image.shape[0] * r))
+    else:
+        r = float(new_size)/ image.shape[0]
+        dim = ( int(image.shape[1] * r),new_size)
+        
+    resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
+    return resized
+
+
+out_arm_big = get_longer_arm(experiment1,20,out_arms)
+out_resized = resize_image(out_arm_big,new_size=64)
+m.si2(out_arm_big,out_resized,"max size : "+str(max(out_arm_big.shape)),"resized")
+
+out_rechanged = resize_image(out_resized,max(out_arm_big.shape))
+m.si2(out_arm_big,out_rechanged,"original","reconstructed")
