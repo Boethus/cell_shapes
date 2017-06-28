@@ -8,10 +8,11 @@ Created on Thu Jun 22 17:01:28 2017
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Reshape
+from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.core import Activation
 from keras.layers.normalization import BatchNormalization
 from keras.layers.convolutional import UpSampling2D
-from keras.layers.convolutional import Conv2D, MaxPooling2D
+from keras.layers.convolutional import Conv2D, MaxPooling2D,Conv2DTranspose
 from keras.layers.core import Flatten
 from keras.optimizers import SGD
 from keras.datasets import mnist
@@ -45,6 +46,7 @@ def load_protrusions(path=r"D:\data_aurelien\data\deep_learning\arms_for_deep_le
     return data
   
 def generator_model():
+    data_size=52
     model = Sequential()
     model.add(Dense(input_dim=100, output_dim=1024))
     model.add(Activation('tanh'))
@@ -66,7 +68,7 @@ def discriminator_model():
     model.add(Conv2D(
                         64, (5, 5),
                         padding='same',
-                        input_shape=(1, data_size, data_size)))
+                        input_shape=(1, 52, 52)))
     model.add(Activation('tanh'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Conv2D(128, (5, 5)))
