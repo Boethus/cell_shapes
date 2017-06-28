@@ -44,8 +44,9 @@ def combine_images(generated_images):
         image[i*shape[0]:(i+1)*shape[0], j*shape[1]:(j+1)*shape[1]] = \
             img[ :, :]
     return image
-
+cell_path="D:\data_aurelien\data\deep_learning\cells"
 dat = load_n_protrusions()
 cb = combine_images(dat)
 plt.figure()
 plt.imshow(cb,cmap="gray")
+plt.title("Original images")

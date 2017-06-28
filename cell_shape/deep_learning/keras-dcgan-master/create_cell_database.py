@@ -12,13 +12,19 @@ Created on Thu Jun 22 15:30:46 2017
 
 @author: aurelien
 """
-import methods as m
 import cv2
 import numpy as np
 import os
+import sys
+sys.path.append(os.path.join("..","..","segmentation"))
+sys.path.append(os.path.join("..","..","shape"))
+import methods as m
 from find_arms import Experiment,loadObject
 from find_arms import *
 import glob
+import sys
+shape_path = os.path.join("..","..","shape")
+from skimage.measure import block_reduce
 
 def resize_image(image,new_size=80):
     """
@@ -36,13 +42,15 @@ def resize_image(image,new_size=80):
         
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
     return resized
-def get_arms_list_per_frame(experiment,simple_trajectories):
-    """Extracts all arms from a set of manually selected trajectories and
+
+
+def get_cell_list_per_frame(experiment,simple_trajectories):
+    """Extracts all cells from a set of manually selected trajectories and
     saves them in a folder
     """
-    arms_list=[]
+    cells_list=[]
     for i in range(experiment.n_frames-1):
-        arms_list.append([])
+        cells_list.append([])
     
     if type(simple_trajectories[0])==tuple:
         simple_trajs = [y for x,y in simple_trajectories]
@@ -52,9 +60,8 @@ def get_arms_list_per_frame(experiment,simple_trajectories):
     for traj in simple_trajs:
         for cell in traj.cells:
             frame_number= cell.frame_number
-            for arm in cell.arms:
-                arms_list[frame_number].append(arm)
-    return arms_list
+            cells_list[frame_number].append(cell)
+    return cells_list
 
 def arm_bb(experiment,frame_number,arm_label):
     """ Returns an image of an arm only using its label and frame number
@@ -86,13 +93,47 @@ def arm_bb(experiment,frame_number,arm_label):
     sub_frame[sub_roi==0]=0
     return sub_frame
 
-def get_longer_arm(experiment,frame_number,arm_labels):
+def bb_cell(frame,body,arm,cell):
+    """ Returns the position of the rectangular contour of a cell
+    Parameters:
+        experiment: instance of the class Experiment
+        cell: instance of the class Cell whose bounding box we want to extract
+    Return:
+        (x,y,w,h): tuple, (x,y) and (x+w,y+h) defining two opposite corners
+        of the bounding box of the cell
+    """
+    
+    rois = body==(cell.body+1)
+    for elt in cell.arms:
+        rois = np.logical_or(rois,arm==elt+1)
+    im2,contours,hierarchy = cv2.findContours((rois).astype(np.uint8), 1, 2)
+    if len(contours)==1:
+        cnt = contours[0]
+    else:
+        #If find several contours, takes the largest
+        widths=[]
+        for i in range(len(contours)):
+            cnt = contours[i]
+            x,y,w,h = cv2.boundingRect(cnt)
+            widths.append(w)
+        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+        indices = indices[0]
+        cnt = contours[indices]
+    
+    x,y,w,h = cv2.boundingRect(cnt)
+    sub_frame = frame[y:y+h,x:x+w]
+    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
+    sub_roi = rois[y:y+h,x:x+w]
+    sub_frame[sub_roi==0]=0
+    return sub_frame
+
+def get_longer_cell(experiment,frame_number,cells_labels):
     """ Returns an image of an arm only using its label and frame number
     """
-    frame = m.open_frame(experiment.path,frame_number+1)
+    body = m.open_frame(experiment.body_path,frame_number+1)
     arm = m.open_frame(experiment.arm_path,frame_number+1)
     length_list = []
-    for arm_label in arm_labels[frame_number]:
+    for arm_label in cells_labels[frame_number]:
         roi = arm==(arm_label+1)
         im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
         if len(contours)==1:
@@ -114,15 +155,17 @@ def get_longer_arm(experiment,frame_number,arm_labels):
     index_max_size = [i for i,z in enumerate(length_list) if z==max_size]
     return arm_bb(experiment,frame_number,arm_labels[frame_number][index_max_size[0]])
 
-def get_all_arm_length(experiment,arm_labels):
+def get_all_cell_length(experiment,cells_list):
     """ Returns an image of an arm only using its label and frame number
     """
     length_list = []
     for frame_number in range(experiment.n_frames-1):
         arm = m.open_frame(experiment.arm_path,frame_number+1)
-    
-        for arm_label in arm_labels[frame_number]:
-            roi = arm==(arm_label+1)
+        body = m.open_frame(experiment.body_path,frame_number+1)
+        for cell in cells_list[frame_number]:
+            roi = body==(cell.body+1)
+            for arm_label in cell.arms:
+                roi = np.logical_or(roi,arm==(arm_label+1))
             im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
             if len(contours)==1:
                 cnt = contours[0]
@@ -140,7 +183,7 @@ def get_all_arm_length(experiment,arm_labels):
             x,y,w,h = cv2.boundingRect(cnt)
             length_list.append(max(w,h))
     return length_list
-from skimage.measure import block_reduce
+
 def make_square_image(image,down_factor=2,new_size=64):
     """
     Parameters:
@@ -168,91 +211,52 @@ def make_square_image(image,down_factor=2,new_size=64):
         
     return resized
 #---opening everything
-data_path = 
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path2 = os.path.join("..",'data','microglia','8_denoised')
-path_centers2 = os.path.join("..",'data','microglia','8_centers') 
+if sys.platform=='win32':
+    data_path = "D:\data_aurelien\data"
+else:
+    data_path =os.path.join("..",'data')
+    
+path = os.path.join(data_path,'microglia','RFP1_denoised')
+path_centers = os.path.join(data_path,'microglia','1_centers_improved') 
+path2 = os.path.join(data_path,'microglia','8_denoised')
+path_centers2 = os.path.join(data_path,'microglia','8_centers') 
 
 
-path_arms = os.path.join("..",'data','microglia','1_arms')  
+path_arms = os.path.join(data_path,'microglia','1_arms')  
+
+path_arms2 = os.path.join(data_path,'microglia','8_arms')  
 
 experiment1 = Experiment(path,path_centers,path_arms)
 experiment1.load()
 #experiment1.track_arms_and_centers()
-simple_trajectories1 = loadObject("corrected_normal_exp1")
+simple_trajectories1 = loadObject(os.path.join(shape_path,"corrected_normal_exp1"))
 simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
 
-path_arms2 = os.path.join("..",'data','microglia','8_arms')  
 experiment2 = Experiment(path2,path_centers2,path_arms2)
 experiment2.load()
-simple_trajectories2 = loadObject("corrected_normal_exp8")
+simple_trajectories2 = loadObject(os.path.join(shape_path,"corrected_normal_exp8"))
 simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
 
 #Actual work
 
-out_arms=get_arms_list_per_frame(experiment1,simple_trajectories1)
-out_arm_big = get_longer_arm(experiment1,20,out_arms)
-out_resized = resize_image(out_arm_big,new_size=32)
-m.si2(out_arm_big,out_resized,"max size : "+str(max(out_arm_big.shape)),"resized")
-
-#ll = get_all_arm_length(experiment1,out_arms ) 
-out_rechanged = resize_image(out_resized,max(out_arm_big.shape))
-m.si2(out_arm_big,out_rechanged,"original","reconstructed")
-
-#Get the maximum size of an arm in the entire experiment:
-mm=[]
-for i in range(experiment1.n_frames-1):
-    print i
-    out = get_longer_arm(experiment1,i,out_arms)
-    mm.append(max(out.shape))
-print mm
-outsiders  =[i for i,x in enumerate(mm) if x>100]
-for j in outsiders:
-    m.si(get_longer_arm(experiment1,j,out_arms),title=str(mm[j]))
-
-def bb_arm(frame,arm,arm_label):
-    """ Returns an image of an arm only using its label and frame number
-    """
-    
-    roi = arm==(arm_label+1)
-    im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
-    if len(contours)==1:
-        cnt = contours[0]
-    else:
-        #If find several contours, takes the largest
-        widths=[]
-        for i in range(len(contours)):
-            cnt = contours[i]
-            x,y,w,h = cv2.boundingRect(cnt)
-            widths.append(w)
-        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
-        indices = indices[0]
-        cnt = contours[indices]
-    
-    x,y,w,h = cv2.boundingRect(cnt)
-    sub_frame = frame[y:y+h,x:x+w]
-    sub_roi = roi[y:y+h,x:x+w]
-    sub_frame[~sub_roi]=0
-    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
-    return sub_frame
-
-savepath=os.path.join("..",'data','microglia','arms_for_deep_learning')
+#cells_len = get_all_cell_length(experiment1,out_arms)
 
 def preprocess_arms_dl(experiment,trajectories,savepath,replace=False):
-    out_arms=get_arms_list_per_frame(experiment,trajectories)
+    out_cells=get_cell_list_per_frame(experiment,trajectories)
     glob_nr=0  #To change with names in savepath
-    new_size=40
+    new_size=52
     if not replace:
         elts_already_in = len(glob.glob(savepath+"/*"))
         glob_nr+=elts_already_in
-    for frame_nr,arms_list in enumerate(out_arms):
+    for frame_nr,arms_list in enumerate(out_cells):
         frame = m.open_frame(experiment.path,frame_nr+1)
         arm = m.open_frame(experiment.arm_path,frame_nr+1)
+        body = m.open_frame(experiment.body_path,frame_nr+1)
         for arm_label in arms_list:
-            out = bb_arm(frame,arm,arm_label)
+            out = bb_cell(frame,body,arm,arm_label)
             out = make_square_image(out,new_size = new_size)
             cv2.imwrite(os.path.join(savepath,str(glob_nr)+".png"),out)
             glob_nr+=1
-preprocess_arms_dl(experiment2,simple_trajectories2,savepath,False)
-            
+#preprocess_arms_dl(experiment2,simple_trajectories2,savepath,False)
+savepath = "D:\data_aurelien\data\deep_learning\cells"
+preprocess_arms_dl(experiment2,simple_trajectories2,savepath)

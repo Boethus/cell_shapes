@@ -23,8 +23,10 @@ import math
 import os
 import time
 os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=gpu,floatX=float32"
-savepath = r"D:\data_aurelien\data\deep_learning\arms_for_deep_learning"
+savepath = r"D:\data_aurelien\data\deep_learning\cells"
 
+data_size=52
+    
 def load_protrusions(path=r"D:\data_aurelien\data\deep_learning\arms_for_deep_learning"):
     
     print "Loading dataset..."
@@ -39,10 +41,10 @@ def load_protrusions(path=r"D:\data_aurelien\data\deep_learning\arms_for_deep_le
         img = np.asarray(Image.open(arm_name))
         data[i,:,:]=img
     print "done loading",data.shape[0],"images"
+    print "dataset from",path.split("\\")[-1]
     return data
   
 def generator_model():
-    data_size=40
     model = Sequential()
     model.add(Dense(input_dim=100, output_dim=1024))
     model.add(Activation('tanh'))
@@ -64,7 +66,7 @@ def discriminator_model():
     model.add(Conv2D(
                         64, (5, 5),
                         padding='same',
-                        input_shape=(1, 40, 40)))
+                        input_shape=(1, data_size, data_size)))
     model.add(Activation('tanh'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Conv2D(128, (5, 5)))
@@ -102,8 +104,9 @@ def combine_images(generated_images):
 
 
 def train(BATCH_SIZE):
-    X_train = load_protrusions()
+    X_train = load_protrusions(savepath)
     X_train = (X_train.astype(np.float32) - 127.5)/127.5
+    #Reshape operation to add one dimension color: here is one
     X_train = X_train.reshape((X_train.shape[0], 1) + X_train.shape[1:])
     discriminator = discriminator_model()
     generator = generator_model()
@@ -120,6 +123,11 @@ def train(BATCH_SIZE):
     for epoch in range(100):
         print("Epoch is", epoch)
         print("Number of batches", int(X_train.shape[0]/BATCH_SIZE))
+        
+        if (epoch)%10==0:
+            generator.save_weights('generator_epoch_'+str(epoch), True)
+            discriminator.save_weights('discriminator_epoch_'+str(epoch), True)
+            
         for index in range(int(X_train.shape[0]/BATCH_SIZE)):
             for i in range(BATCH_SIZE):
                 noise[i, :] = np.random.uniform(-1, 1, 100)
@@ -134,11 +142,15 @@ def train(BATCH_SIZE):
             y = [1] * BATCH_SIZE + [0] * BATCH_SIZE
             d_loss = discriminator.train_on_batch(X, y)
             print("batch %d d_loss : %f" % (index, d_loss))
+            
             for i in range(BATCH_SIZE):
                 noise[i, :] = np.random.uniform(-1, 1, 100)
             discriminator.trainable = False
             g_loss = discriminator_on_generator.train_on_batch(
                 noise, [1] * BATCH_SIZE)
+            with open("logs.txt","a") as fil:
+                fil.write(str(d_loss)+" "+str(g_loss)+"\n")
+                
             discriminator.trainable = True
             print("batch %d g_loss : %f" % (index, g_loss))
             if index % 10 == 9:

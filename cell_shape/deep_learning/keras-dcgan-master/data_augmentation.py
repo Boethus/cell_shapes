@@ -10,7 +10,7 @@ from PIL import Image
 import numpy as np
 import cv2
 
-savepath = r"D:\data_aurelien\data\deep_learning\arms_for_deep_learning"
+savepath = r"D:\data_aurelien\data\deep_learning\cells"
 
 def rotations(path):
     """given a dataset in path, operates 3 rotations of 90degres and
@@ -54,5 +54,5 @@ def shuffle_protrusions(path):
     for i in range(len(dat)):
         img = dat[i]
         cv2.imwrite(os.path.join(path,str(i)+".png"),img)
-        
+rotations(savepath)
 shuffle_protrusions(savepath)
