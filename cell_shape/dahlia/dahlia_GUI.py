@@ -7,7 +7,8 @@ Created on Wed Dec 28 17:35:12 2016
 
 from PyQt4 import QtGui,QtCore
 import numpy as np
-from dahlia_backend import Experiment,saveObject,loadObject
+from dahlia_backend import Experiment,saveObject,loadObject,w_trajectory_classification
+from dahlia_backend import w_classification
 import os
 import dahlia_methods as m
 import cv2
@@ -122,9 +123,15 @@ class dahlia_GUI(QtGui.QWidget):
         self.experiment.process_tracking()
         
     def classification(self):
-        pass
+        name = os.path.join(self.path.join(self.experiment.path,"traj_selection"))
+        w_trajectory_classification(self.experiment,name)
+        
     def data_clustering(self):
-        pass
+        self.my_dialog =  MyDialog(self)
+        self.my_dialog.show()
+        path_list = []    #Contains the paths to the classified trajectories
+        w_classification(path_list)
+        
 class DialogDenoising(QtGui.QDialog):
     def __init__(self, parent=None):
         super(DialogDenoising, self).__init__(parent)
@@ -347,7 +354,20 @@ class DialogSegmentation(QtGui.QDialog):
     def reject(self):
         super(DialogSegmentation, self).reject()
     
-"""TODO: denoising, segmentation, tracking"""
+class MyDialog(QtGui.QDialog):
+    def __init__(self, parent=None):
+        super(MyDialog, self).__init__(parent)
+
+        self.buttonBox = QtGui.QDialogButtonBox(self)
+        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
+        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+
+        self.textBrowser = QtGui.QTextBrowser(self)
+        self.textBrowser.append("This is a QTextBrowser!")
+
+        self.verticalLayout = QtGui.QVBoxLayout(self)
+        self.verticalLayout.addWidget(self.textBrowser)
+        self.verticalLayout.addWidget(self.buttonBox)
     
 app = QtGui.QApplication([])
 win = dahlia_GUI()
