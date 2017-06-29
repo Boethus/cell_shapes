@@ -49,7 +49,7 @@ class dahlia_GUI(QtGui.QWidget):
         
         self.grid.addWidget(self.b_load_experiment,1,0)
         self.grid.addWidget(self.b_new_experiment,1,1)
-        self.grid.addWidget(self.status_display,2,0)
+        self.grid.addWidget(self.status_display,2,0,1,5)
         
         #Just to write the thing. Remove after
         self.unlock_menu()
@@ -76,7 +76,7 @@ class dahlia_GUI(QtGui.QWidget):
         self.unlock_menu()
 
     def unlock_menu(self):
-        
+        self.status_display.setText("Experiment in: "+self.experiment.path)
         self.b_denoising = QtGui.QPushButton("Denoising")
         self.b_denoising.clicked.connect(self.denoising)
         
@@ -86,9 +86,19 @@ class dahlia_GUI(QtGui.QWidget):
         self.b_tracking = QtGui.QPushButton("Tracking")
         self.b_tracking.clicked.connect(self.tracking)
         
+        self.b_classification = QtGui.QPushButton("Manual Trajectory Classification")
+        self.b_classification.clicked.connect(self.classification)
+        
+        
+        self.b_clustering = QtGui.QPushButton("Data clustering")
+        self.b_clustering.clicked.connect(self.data_clustering)
+        
         self.grid.addWidget(self.b_denoising,3,0)
         self.grid.addWidget(self.b_segmentation,3,1)
         self.grid.addWidget(self.b_tracking,3,2)
+        
+        self.grid.addWidget(self.b_classification,4,0)
+        self.grid.addWidget(self.b_clustering,4,1)
         
     def segmentation(self):
         
@@ -111,6 +121,10 @@ class dahlia_GUI(QtGui.QWidget):
     def tracking(self):
         self.experiment.process_tracking()
         
+    def classification(self):
+        pass
+    def data_clustering(self):
+        pass
 class DialogDenoising(QtGui.QDialog):
     def __init__(self, parent=None):
         super(DialogDenoising, self).__init__(parent)
