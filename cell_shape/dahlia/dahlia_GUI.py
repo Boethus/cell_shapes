@@ -491,8 +491,13 @@ Example : C:\\user\\microglia_LPS;C:\\user\\microglia_control:')
         self.path_label.setText("Path of experiments (One per line):")
         
         self.b_show_images = QtGui.QPushButton("Show group of classified images")
-        
         self.b_show_images.clicked.connect(self.show_random_images)
+        
+        self.b_plot_curves = QtGui.QPushButton("Plot evolution of curves vs time")
+        self.b_plot_curves.clicked.connect(self.extract_time_curves)
+
+        self.b_write_movies = QtGui.QPushButton("Write movies with classified cells colored")
+        self.b_write_movies.clicked.connect(self.classify_entire_movie)
         
         self.grid.addWidget(self.path_label,5,0)
         
@@ -500,15 +505,18 @@ Example : C:\\user\\microglia_LPS;C:\\user\\microglia_control:')
             self.path_display.setText(str(self.path_display.text()+"\n"+path ))
         self.grid.addWidget(self.path_display,5,0,4,4)
         self.grid.addWidget(self.b_show_images,9,0)
+        self.grid.addWidgetidget(self.b_plot_curves,9,1)
+        self.grid.addWidget(self.b_write_movies,9,2)
         
     def show_random_images(self):
         self.clf.show_random_images()
+        
     def classify_entire_movie(self):
-        pass
+        self.clf.write_entire_movie()
+        
     def extract_time_curves(self):
-        pass
-    def histogram_of_time_curves(self):
-        pass
+        self.clf.plot_evolution()
+        
 app = QtGui.QApplication([])
 win = dahlia_GUI()
 

@@ -1432,6 +1432,54 @@ def get_fractions(predictions):
         results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
     return results
 
+def write_movie(experiment,name,simple_trajectories,predictions,correspondances):
+    """Overlays all shape classifications to an entire movie, and writes it in 
+    a new folder
+    Parameters:
+        experiment: instance of the class Experiment
+        name: string, name of the folder where the new movie will be written
+        simple_trajectories: list of Trajectory
+        predictions: numpy array containing the predicted class of each cell
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+    """
+            
+    path = os.path.join("..","data","microglia",name)
+    colors = ['green','red','blue','pink','yellow']
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    #Separate each cell from each trajectory
+    cell_list=[]
+    for i in range(241):
+        cell_list.append([])
+        #Copy the frames in new directory. these frames will be modified by the loop
+        frame = m.open_frame(experiment.path,i+1)
+        cv2.imwrite(os.path.join(path,str(i+1)+".png"),frame)
+        
+    for i,(index_traj,index_cell) in enumerate(correspondances):
+        traj = simple_trajectories[index_traj][1]
+        cell=traj.cells[index_cell]
+        pred = predictions[i]
+        cell_list[cell.frame_number].append((cell,pred))
+    n_pred = np.max(predictions)+1
+    for frame_nr,cells in enumerate(cell_list):
+        print "processing frame nr",frame_nr+1
+        frame = m.open_frame(path,frame_nr+1)
+        body = m.open_frame(experiment.body_path,frame_nr+1)
+        arm = m.open_frame(experiment.arm_path,frame_nr+1)
+        mask = np.zeros((frame.shape[0],frame.shape[1],n_pred),dtype=np.uint8)
+        out = np.zeros((frame.shape[0],frame.shape[1],3),dtype=np.uint8)
+        for cell,pred in cells:
+            
+            mask[:,:,pred] += (body==cell.body+1).astype(np.uint8)
+            for elt in cell.arms:
+                mask[:,:,pred]+=(arm==elt+1).astype(np.uint8)
+        mask*=255
+        for i in range(n_pred):
+            out+= m.cv_overlay_mask2image(mask[:,:,i],frame,color=colors[i])/n_pred
+        cv2.imwrite(os.path.join(path,str(frame_nr+1)+".png"),out)
+        
+        
 class Cell_Classifier(object):
     """Class containing a reference to the dataset used for calssification,
     the k-means classifier"""
@@ -1496,3 +1544,17 @@ class Cell_Classifier(object):
             plt.title("histogram of trajectories in path:\n"+self.path_list[i])
             plt.xlabel('class')
             plt.ylabel('fractions')
+            
+    def write_entire_movie(self):
+        for i in range(len(self.path_list)):
+            experiment = Experiment(self.path_list[i])
+            experiment.load()
+            beg_index = 0
+            for j in range(i):
+                beg_index+=sum([len(x[1].cells) for x in self.trajectories[j]])
+            end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[i]])
+            predictions = self.predictions[beg_index:end_index]
+            name=experiment.path+"_all_classified"
+            trajectories = self.trajectories[i]
+            correspondances = correspondance_vector(trajectories)
+            write_movie(experiment,name,trajectories,predictions,correspondances)
