@@ -9,7 +9,7 @@ Created on Tue May 23 11:25:34 2017
 import os
 import sys
 sys.path.append(os.path.join(".","..","segmentation"))
-import methods as m
+import dahlia_methods as m
 import numpy as np
 import scipy.ndimage as ndi
 import cv2
@@ -18,20 +18,23 @@ import glob
 from screeninfo import get_monitors
 import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
-
+import copy
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+import random
 
 #import process_trajectories as pt
 
 
 monitor = get_monitors()[0]
-width_monitor = monitor.width
-height_monitor = monitor.height
+width_monitor = monitor.width/2
+height_monitor = monitor.height/2
 
 plt.close('all')
 
-
+def number_elts_in_folder(folder):
+    l = glob.glob(folder+"/*.png")
+    return len(l)
 def reorder_list(liste,max_body):
     """liste is a correspondance list. Each of these correspondance 
     lists assigns a body to a cell arm. This method assigns all of its arms to 
@@ -535,7 +538,7 @@ class Experiment(object):
             label_center,label_arms = self.segment_arms_n_centers(i)
             success = success and cv2.imwrite(os.path.join(self.body_path,str(i)+".png"),label_center)
             success = success and cv2.imwrite(os.path.join(self.arm_path,str(i)+".png"),label_arms)
-            print "file ",i
+            print "Segmenting image ",i
     
     def segment_arms_n_centers(self,nr):
         """Segments frame number nr into bodies and arms """
@@ -976,14 +979,14 @@ def gs_score_each_traj(experiment,simple_trajectories,score_list):
         score = gs_score_trajectory(experiment,traj,score_list)
         results.append(score)
     return results
-#--------------------------Script-----------------------------------------------
+#--------------------------See each trajectory-----------------------------------------------
 def classify_trajectory2(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_trajectory(traj,experiment,50)
-    possible_answers = ['g','r','m','e','a']
+    possible_answers = ['r','m','e','a']
     inp = ''
     while(not inp in possible_answers):
-        inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
+        inp= raw_input("""how would you classify this image: relevant,maybe, error (r/m/e)? Press a to see the sequence again\n""")
     
     if inp=='a':
         inp = classify_trajectory2(traj,experiment)
@@ -1009,10 +1012,14 @@ def w_trajectory_classification(experiment,name):
     
     if os.path.isdir(name):
         print "Careful name already exsits. Proceed?"
-    tmp_dir = "tmp_"+name
-    os.mkdir(tmp_dir)   #Store intermediate results
+    file_name = name.split("\\")[-1]
+    path = name[:-len(file_name)]
+    tmp_dir = os.path.join(path,"tmp_"+file_name)
+    if not os.path.isdir(tmp_dir):
+        os.mkdir(tmp_dir)   #Store intermediate results
     trajectories = find_simple_trajectories(experiment,[])
     classifs=[]
+    
     for i in range(5):
         beg = int(float(len(trajectories)*i)/5)
         end=int(float(len(trajectories)*(i+1))/5)
@@ -1269,7 +1276,7 @@ def w_classification(path_list):
         return
     fv=0
     for i,path in enumerate(path_list):
-        trajectories = loadObject(path)
+        trajectories = loadObject(os.path.join(path,"traj_selection.pkl"))
         experiment = Experiment(path)
         experiment.load()
         if i==0:
@@ -1285,3 +1292,207 @@ def w_classification(path_list):
     kmeans = KMeans(n_clusters=3,n_init=400)
     
     predictions = kmeans.fit_predict(fv)
+    return predictions,kmeans
+
+def correspondance_vector(trajectories):
+    """computes the correspondance vector as above"""
+    vector_correspondance = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(trajectories)]
+    correspondance=[]
+    for lists in vector_correspondance:
+        correspondance.extend(lists)
+    return correspondance
+
+def cell_bounding_box(experiment,cell,color='green'):
+    """given a cell in an experiment, returns a picture centered on this cell
+    overlaid with a certain color
+    Parameters:
+        experiment: instance of the class Experiment
+        cell: instance of the class Cell, found in experiment
+        color: string, specifies the color which needs to be overlaid.
+    Returns:
+        overlay: 3-D numpy array, image of the cell with a color mask
+    """
+    frame_number = cell.frame_number
+    frame = m.open_frame(experiment.path,frame_number+1)
+    body = m.open_frame(experiment.body_path,frame_number+1)
+    arm = m.open_frame(experiment.arm_path,frame_number+1)
+    
+    rois = body==(cell.body+1)
+    for elt in cell.arms:
+        rois = np.logical_or(rois,arm==elt+1)
+    im2,contours,hierarchy = cv2.findContours((rois).astype(np.uint8), 1, 2)
+    if len(contours)==1:
+        cnt = contours[0]
+    else:
+        #If find several contours, takes the largest
+        widths=[]
+        for i in range(len(contours)):
+            cnt = contours[i]
+            x,y,w,h = cv2.boundingRect(cnt)
+            widths.append(w)
+        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+        indices = indices[0]
+        cnt = contours[indices]
+    
+    x,y,w,h = cv2.boundingRect(cnt)
+    
+    sub_frame = frame[y:y+h,x:x+w]
+    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
+    sub_rois = rois[y:y+h,x:x+w]
+    sub_rois=sub_rois.astype(np.uint8)*255
+    overlay = m.cv_overlay_mask2image(sub_rois,sub_frame,color)
+    return overlay
+
+def get_random_image(experiment,simple_trajs,correspondances,predictions,show=False):
+    """Returns a random image centered on a cell in a list of trajectories
+    Parameters: 
+        experiment: instance of the class Experiment
+        simple_trajs: list of trajectories
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+        predictions: numpy array containing the predicted class of each cell
+        show: bool, if True shows the image in a pyplot window
+    Returns:
+        image: numpy array, image centered on a cell with a color corresponding
+            to its class
+        label: int, specifies the class of the cell displayed
+    """
+    
+    index = int(random.random()*len(correspondances))
+    traj_index,cell_index = correspondances[index]
+    cell = simple_trajs[traj_index][1].cells[cell_index]
+    colors = ['green','red','blue','pink','yellow']
+    label = predictions[index]
+    image = cell_bounding_box(experiment,cell,colors[label%len(colors)])
+    if show:
+        plt.imshow(image,cmap='gray')
+        plt.title(str(label))
+    return image,label
+
+def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
+    """shows multiple images together. This method of display respects the scales of each 
+    image.
+    Paramters:
+        experiemnt: instance of the Experiment class
+        simple_trajs: list of simple trajectories
+        correspondances: list of tuples (trajectory_index,cell_index)
+        predictions: numpy array containing the predicted class of each cell
+    Returns:
+        out: composite image of classified cells"""
+    n_images = 5
+    im_list = []
+    max_dim1=0
+    max_dim2=0
+    for i in range(n_images**2):
+        im,lab = get_random_image(experiment,simple_trajs,correspondances,predictions)
+        im_list.append(im)
+        max_dim1 = max(im.shape[0],max_dim1)
+        max_dim2 = max(im.shape[1],max_dim2)
+    out = np.zeros((max_dim1*n_images,max_dim2*n_images,3),dtype=np.uint8)
+    for i in range(n_images**2):
+        k=i//n_images
+        l=i%n_images
+        out[k*max_dim1:k*max_dim1 + im_list[i].shape[0], l*max_dim2:l*max_dim2 + im_list[i].shape[1],:] = im_list[i]
+    return out
+
+def temporal_evolution(experiment,simple_trajectories,predictions,correspondances):
+    """Monitors the temporal evolution in terms of number of cells per class
+    """
+    class_list=[]
+    for i in range(experiment.n_frames-1):
+        class_list.append([])
+        
+    for i,(index_traj,index_cell) in enumerate(correspondances):
+        traj = simple_trajectories[index_traj][1]
+        cell=traj.cells[index_cell]
+        pred = predictions[i]
+        class_list[cell.frame_number].append(pred)
+    
+    n_classes=np.max(predictions)+1
+    fractions = np.zeros((experiment.n_frames,n_classes))
+    for i,classes in enumerate(class_list):
+        elements = np.asarray(classes)
+        n_elts_in_frame = elements.size
+        for j in range(n_classes):
+            fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
+    return fractions
+
+
+def plot_clf_vector(fv):
+    plt.figure()
+    for i in range(fv.shape[1]):
+        plt.plot(fv[:,i])
+
+def get_fractions(predictions):
+    """Returns the fraction of each class in predictions"""
+    n_classes=int(np.max(predictions))+1
+    results = np.zeros(n_classes)
+    nb_elements = predictions.size
+    for i in range(n_classes):
+        results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
+    return results
+
+class Cell_Classifier(object):
+    """Class containing a reference to the dataset used for calssification,
+    the k-means classifier"""
+    def __init__(self,path_list,path = ".",name='cell-classifier'):
+        self.path=path
+        self.path_list = path_list
+        self.classifier = None
+        self.predictions = None
+        self.name = name
+        self.trajectories = []
+        for path in self.path_list:
+            tuple_traj = loadObject(os.path.join(path,"traj_selection.pkl"))
+            self.trajectories.append( tuple_traj )
+        
+        
+    def process(self):
+        self.predictions, self.classifier = w_classification(self.path_list)
+        
+    def save(self):
+        with open(os.path.join(self.path,self.name),'wb') as out:
+            pickle.dump(self.__dict__,out)
+
+    def load(self):
+        print "loading trois petits points"
+        with open(os.path.join(self.path,self.name),'rb') as dataPickle:
+            self.__dict__ = pickle.load(dataPickle)
+            
+    def show_random_images(self):
+        n_exp = int(random.random()*len(self.path_list))
+        path_exp = self.path_list[n_exp]
+        experiment = Experiment(path_exp)
+        experiment.load()
+        beg_index = 0
+        for i in range(n_exp):
+            beg_index+=sum([len(x[1].cells) for x in self.trajectories[i]])
+        end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[n_exp]])
+        predictions = self.predictions[beg_index:end_index]
+        trajectories = self.trajectories[n_exp]
+        correspondances = correspondance_vector(trajectories)
+        out = show_multiple_on_scale(experiment,trajectories,correspondances,predictions)
+        m.si(out)
+        
+    def plot_evolution(self):
+        
+        for i in range(len(self.path_list)):
+            experiment = Experiment(self.path_list[i])
+            experiment.load()
+            beg_index = 0
+            for j in range(i):
+                beg_index+=sum([len(x[1].cells) for x in self.trajectories[j]])
+            end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[i]])
+            predictions = self.predictions[beg_index:end_index]
+            trajectories = self.trajectories[i]
+            correspondances = correspondance_vector(trajectories)
+            vt = (experiment,trajectories,predictions,correspondances)
+            plot_clf_vector(vt)
+            plt.title(self.path_list[i])
+            plt.show()
+            frac = get_fractions(vt)
+            plt.figure()
+            plt.bar([0,1,2],frac)
+            plt.title("histogram of trajectories in path:\n"+self.path_list[i])
+            plt.xlabel('class')
+            plt.ylabel('fractions')
