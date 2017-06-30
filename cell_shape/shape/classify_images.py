@@ -172,7 +172,7 @@ def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
     max_dim1=0
     max_dim2=0
     for i in range(n_images**2):
-        im,lab = get_random_image(experiment1,simple_trajectories1,correspondance1,predictions)
+        im,lab = get_random_image(experiment,simple_trajs,correspondances,predictions)
         im_list.append(im)
         max_dim1 = max(im.shape[0],max_dim1)
         max_dim2 = max(im.shape[1],max_dim2)
@@ -264,64 +264,15 @@ def test_correspondance(experiment,predictions,kmeans,all_thickness_list,corresp
         print predictions[np.asarray(indices_traj)]
     else:
         print "test2 passed"
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path_arms = os.path.join("..",'data','microglia','1_arms')  
 
-experiment1 = Experiment(path,path_centers,path_arms)
-experiment1.load()
-#experiment1.track_arms_and_centers()
-simple_trajectories1 = loadObject("corrected_normal_exp1")
-simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
-
-path2 = os.path.join("..",'data','microglia','8_denoised')
-path_centers2 = os.path.join("..",'data','microglia','8_centers') 
-path_arms2 = os.path.join("..",'data','microglia','8_arms')  
-experiment2 = Experiment(path2,path_centers2,path_arms2)
-experiment2.load()
-simple_trajectories2 = loadObject("corrected_normal_exp8")
-simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
-
-#Vector correspondance returns for each index of frame processed, a tuple
-#(position in traj list,position of frame in traj)
-vector_correspondance_1 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories1)]
-correspondance1=[]
-for lists in vector_correspondance_1:
-    correspondance1.extend(lists)
-
-vector_correspondance_2 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories2)]
-correspondance2=[]
-for lists in vector_correspondance_2:
-    correspondance2.extend(lists)
+def correspondance_vector(trajectories):
+    """computes the correspondance vector as above"""
+    vector_correspondance = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(trajectories)]
+    correspondance=[]
+    for lists in vector_correspondance:
+        correspondance.extend(lists)
+    return correspondance
     
-fv = extract_feature_vectors(experiment1,simple_trajectories1)
-fv2 = extract_feature_vectors(experiment2,simple_trajectories2)
-
-fv=fv.transpose()
-fv2=fv2.transpose()
-
-total = np.concatenate((fv,fv2),axis=0)
-
-#Clustering:
-
-#total = total.reshape((total.shape[1]),total.shape[0])
-
-total[:,1]=total[:,5]  #Not keep the min length and replace with max width
-total = total[:,0:3]
-"""
-total2 = np.zeros((total.shape[0],4))
-total2[:,0:3]=total[:,0:3]
-total2[:,3]=total[:,3]
-total=total2"""
-scaler = StandardScaler()
-total = scaler.fit_transform(total)
-kmeans = KMeans(n_clusters=4,n_init=400)
-
-predictions = kmeans.fit_predict(total)
-
-#m.si(show_multiple(experiment1,simple_trajectories1,correspondance1,predictions),title='3-class classification of cell morphology')
-
-cv2.imshow("Frames classified",show_multiple_on_scale(experiment1,simple_trajectories1,correspondance1,predictions))
 
 """Classification with just the first three elements of the feature vector, ie just the ones
 relative to arms length seem to be the most pysically relevant"""
@@ -353,8 +304,7 @@ def separate_trajectories(predictions,correspondances):
             is_constant_class[i]=True
     return is_constant_class,predictions_traj
 
-d,preds=separate_trajectories(predictions,correspondance1)
-print np.count_nonzero(d),d.size
+
 
 def bounding_box(experiment,cell):
     """ Returns the position of the rectangular contour of a cell
@@ -422,28 +372,6 @@ def extract_trajectory_movie(experiment,name,trajectory,preds):
         out = m.cv_overlay_mask2image(mask*255,frame,color=colors[preds[i]])
         cv2.imwrite(os.path.join(path,str(i)+".png"),out)
 
-"""
-for i in range(40):
-    extract_trajectory_movie(experiment1,"cellShape"+str(10+i),simple_trajectories1[10+i][1],preds[10+i])
-    
-path_results = "/home/aurelien/Documents/rotation1/cell_shape/data/results/trajectories_classified/"
-for i in range(40):
-    num=i+10
-    curr_path=os.path.join(path_results,"cellShape"+str(num),"curves")
-    if not os.path.isdir(curr_path):
-        os.mkdir(curr_path)
-    fig=plt.figure()
-    ce = Feature_Extractor(experiment1)
-    ce.set_trajectory(simple_trajectories1[num][1])
-    ce.plot_distances(new_fig=False)
-    fig.savefig(os.path.join(curr_path,"distances.png"))
-    plt.close(fig)
-"""
-#write_movie(experiment1,"movie_shapes",simple_trajectories1,predictions,correspondance1)
-
-predictions1=predictions[0:len(correspondance1)]
-predictions2=predictions[len(correspondance1):]
-
 def temporal_evolution(experiment,simple_trajectories,predictions,correspondances):
     """Monitors the temporal evolution in terms of number of cells per class
     """
@@ -466,6 +394,65 @@ def temporal_evolution(experiment,simple_trajectories,predictions,correspondance
             fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
     return fractions
 
+#------------------------Kmeans classification
+path = os.path.join("..",'data','microglia','RFP1_denoised')
+path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
+path_arms = os.path.join("..",'data','microglia','1_arms')  
+
+experiment1 = Experiment(path,path_centers,path_arms)
+experiment1.load()
+#experiment1.track_arms_and_centers()
+simple_trajectories1 = loadObject("corrected_normal_exp1")
+simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
+
+path2 = os.path.join("..",'data','microglia','8_denoised')
+path_centers2 = os.path.join("..",'data','microglia','8_centers') 
+path_arms2 = os.path.join("..",'data','microglia','8_arms')  
+experiment2 = Experiment(path2,path_centers2,path_arms2)
+experiment2.load()
+simple_trajectories2 = loadObject("corrected_normal_exp8")
+simple_trajectories2 = filter(lambda x:x[0]!="g",simple_trajectories2)
+
+#Vector correspondance returns for each index of frame processed, a tuple
+#(position in traj list,position of frame in traj)
+vector_correspondance_1 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories1)]
+correspondance1=[]
+for lists in vector_correspondance_1:
+    correspondance1.extend(lists)
+
+vector_correspondance_2 = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(simple_trajectories2)]
+correspondance2=[]
+    
+for lists in vector_correspondance_2:
+    correspondance2.extend(lists)
+
+fv = extract_feature_vectors(experiment1,simple_trajectories1)
+fv2 = extract_feature_vectors(experiment2,simple_trajectories2)
+
+fv=fv.transpose()
+fv2=fv2.transpose()
+
+total = np.concatenate((fv,fv2),axis=0)
+
+#Clustering:
+
+#total = total.reshape((total.shape[1]),total.shape[0])
+
+total[:,1]=total[:,5]  #Not keep the min length and replace with max width
+total = total[:,0:3]
+scaler = StandardScaler()
+total = scaler.fit_transform(total)
+kmeans = KMeans(n_clusters=3,n_init=400)
+
+predictions = kmeans.fit_predict(total)
+d,preds=separate_trajectories(predictions,correspondance1)
+print np.count_nonzero(d),d.size
+
+cv2.imshow("Frames classified",show_multiple_on_scale(experiment1,simple_trajectories1,correspondance1,predictions))    
+
+predictions1=predictions[0:len(correspondance1)]
+predictions2=predictions[len(correspondance1):]
+
 f2 = temporal_evolution(experiment2,simple_trajectories2,predictions2,correspondance2)
 f1 = temporal_evolution(experiment1,simple_trajectories1,predictions1,correspondance1)
 
@@ -482,104 +469,7 @@ frac1_2 = float(np.count_nonzero(predictions2==1))/predictions2.size
 frac2_1 = float(np.count_nonzero(predictions1==2))/predictions1.size
 frac2_2 = float(np.count_nonzero(predictions2==2))/predictions2.size
 
-def get_arms_list_per_frame(experiment,simple_trajectories):
-    """Extracts all arms from a set of manually selected trajectories and
-    saves them in a folder
-    """
-    arms_list=[]
-    for i in range(experiment.n_frames-1):
-        arms_list.append([])
-    
-    if type(simple_trajectories[0])==tuple:
-        simple_trajs = [y for x,y in simple_trajectories]
-    else:
-        simple_trajs = simple_trajectories
-       
-    for traj in simple_trajs:
-        for cell in traj.cells:
-            frame_number= cell.frame_number
-            for arm in cell.arms:
-                arms_list[frame_number].append(arm)
-    return arms_list
-
-def arm_bb(experiment,frame_number,arm_label):
-    """ Returns an image of an arm only using its label and frame number
-    """
-    frame = m.open_frame(experiment.path,frame_number+1)
-    arm = m.open_frame(experiment.arm_path,frame_number+1)
-    
-    roi = arm==arm_label
-    im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
-    if len(contours)==1:
-        cnt = contours[0]
-    else:
-        #If find several contours, takes the largest
-        widths=[]
-        for i in range(len(contours)):
-            cnt = contours[i]
-            x,y,w,h = cv2.boundingRect(cnt)
-            widths.append(w)
-        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
-        indices = indices[0]
-        cnt = contours[indices]
-    
-    x,y,w,h = cv2.boundingRect(cnt)
-    sub_frame = frame[y:y+h,x:x+w]
-    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
-    sub_roi = roi[y:y+h,x:x+w]
-    sub_frame[sub_roi==0]=0
-    return sub_frame
-
 out_arms=get_arms_list_per_frame(experiment1,simple_trajectories1)
-m.si(arm_bb(experiment1,0,out_arms[0][0]))
-
-def get_longer_arm(experiment,frame_number,arm_labels):
-    """ Returns an image of an arm only using its label and frame number
-    """
-    frame = m.open_frame(experiment.path,frame_number+1)
-    arm = m.open_frame(experiment.arm_path,frame_number+1)
-    length_list = []
-    for arm_label in arm_labels[frame_number]:
-        roi = arm==arm_label
-        im2,contours,hierarchy = cv2.findContours((roi).astype(np.uint8), 1, 2)
-        if len(contours)==1:
-            cnt = contours[0]
-        else:
-            #If find several contours, takes the largest
-            widths=[]
-            for i in range(len(contours)):
-                cnt = contours[i]
-                x,y,w,h = cv2.boundingRect(cnt)
-                widths.append(w)
-            indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
-            indices = indices[0]
-            cnt = contours[indices]
-        
-        x,y,w,h = cv2.boundingRect(cnt)
-        length_list.append(max(w,h))
-    max_size = max(length_list) 
-    index_max_size = [i for i,z in enumerate(length_list) if z==max_size]
-    for i in index_max_size:
-        m.si(arm_bb(experiment,frame_number,arm_labels[frame_number][i]),title="size: "+str(max_size))
-    return arm_bb(experiment,frame_number,arm_labels[frame_number][index_max_size[0]])
-
-def make_square_image(image,new_size=80):
-    """
-    Parameters:
-        image: 2-D or 3-D numpy array
-        new_size : int, gives the desired maximum dimension
-    Returns:
-        resized: numpy array"""
-    if image.shape[1]>image.shape[0]:
-        r = float(new_size)/ image.shape[1]
-        dim = (new_size,int(image.shape[0] * r))
-    else:
-        r = float(new_size)/ image.shape[0]
-        dim = ( int(image.shape[1] * r),new_size)
-        
-    resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
-    return resized
-
 
 out_arm_big = get_longer_arm(experiment1,20,out_arms)
 out_resized = resize_image(out_arm_big,new_size=64)
@@ -587,3 +477,86 @@ m.si2(out_arm_big,out_resized,"max size : "+str(max(out_arm_big.shape)),"resized
 
 out_rechanged = resize_image(out_resized,max(out_arm_big.shape))
 m.si2(out_arm_big,out_rechanged,"original","reconstructed")
+
+
+
+
+#Do same with experiments 2 and 7
+path3 = os.path.join("..",'data','microglia','2_denoised')
+path4 = os.path.join("..",'data','microglia','7_denoised')
+clf_name3 = "clf_exp2.pkl"
+clf_name4 = "clf_exp7.pkl"
+experiment3 = Experiment(path3,"","")
+experiment4 = Experiment(path4,"","")
+experiment3.load()
+experiment4.load()
+
+trajectories3 = loadObject(clf_name3)
+trajectories4 = loadObject(clf_name4)
+
+correspondances3 = correspondance_vector(trajectories3)
+correspondances4 = correspondance_vector(trajectories4)
+
+fv3 = extract_feature_vectors(experiment3,trajectories3)
+fv4 = extract_feature_vectors(experiment4,trajectories4)
+
+fv3=fv3.transpose()
+fv4=fv4.transpose()
+
+total34 = np.concatenate((fv3,fv4),axis=0)
+
+#Clustering:
+
+#total = total.reshape((total.shape[1]),total.shape[0])
+
+total34[:,1]=total34[:,5]  #Not keep the min length and replace with max width
+total34 = total34[:,0:3]
+total34 = scaler.fit_transform(total34)
+preds34 = kmeans.predict(total34)
+
+preds3 = preds34[:len(correspondances3)]
+preds4 = preds34[len(correspondances3):]
+
+f3 = temporal_evolution(experiment3,trajectories3,preds3,correspondances3)
+f4 = temporal_evolution(experiment4,trajectories4,preds4,correspondances4)
+
+def plot_clf_vector(fv):
+    plt.figure()
+    for i in range(fv.shape[1]):
+        plt.plot(fv[:,i])
+        
+plot_clf_vector(f3)
+plt.title("control")
+plot_clf_vector(f4)
+plt.title("LPS")
+        
+cv2.imshow("Frames classified",show_multiple_on_scale(experiment4,trajectories4,correspondances4,preds4))
+
+def get_fractions(predictions):
+    """Returns the fraction of each class in predictions"""
+    n_classes=int(np.max(predictions))+1
+    results = np.zeros(n_classes)
+    nb_elements = predictions.size
+    for i in range(n_classes):
+        results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
+    return results
+print get_fractions(preds3),"control"
+print get_fractions(preds4),"LPS"
+print get_fractions(predictions1),"control"
+print get_fractions(predictions2),"LPS"
+
+kmeans_all = KMeans(n_clusters=3,n_init=400)
+total_preds = np.concatenate((fv,fv2,fv3,fv4),axis = 0)
+total_preds[:,1]=total_preds[:,5]  #Not keep the min length and replace with max width
+total_preds = total_preds[:,0:3]
+
+scaler_total = StandardScaler()
+total_preds = scaler_total.fit_transform(total_preds)
+
+predd = kmeans_all.fit_predict(total_preds)
+
+p1=predd[:len(correspondance1)]
+p2 = predd[len(correspondance1):len(correspondance2)+len(correspondance1)]
+p3=predd[len(correspondance2)+len(correspondance1):len(correspondance2)+len(correspondance1)+len(correspondances3)]
+p4=predd[len(correspondance2)+len(correspondance1)+len(correspondances3):]
+cv2.imshow("Frames classified",show_multiple_on_scale(experiment4,trajectories4,correspondances4,p4))
