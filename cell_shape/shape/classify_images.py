@@ -17,6 +17,8 @@ import numpy as np
 import methods as m
 import cv2
 import matplotlib.pyplot as plt
+import sys
+sys.path.append("../dahlia")
 
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -53,7 +55,7 @@ def extract_feature_vectors(experiment,simple_trajectories):
         print "in simple trajectories loop"
         feature_extractor.set_trajectory(traj)
         new_vector = feature_extractor.feature_vector(all_thickness_list)
-        feature_vector = np.concatenate((feature_vector,new_vector),axis=1)
+        feature_vector = np.concatenate((feature_vector,new_vector),axis=0)
     return feature_vector
  
     
@@ -394,6 +396,20 @@ def temporal_evolution(experiment,simple_trajectories,predictions,correspondance
             fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
     return fractions
 
+def plot_clf_vector(fv):
+    plt.figure()
+    for i in range(fv.shape[1]):
+        plt.plot(fv[:,i])
+        
+def get_fractions(predictions):
+    """Returns the fraction of each class in predictions"""
+    n_classes=int(np.max(predictions))+1
+    results = np.zeros(n_classes)
+    nb_elements = predictions.size
+    for i in range(n_classes):
+        results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
+    return results
+
 #------------------------Kmeans classification
 path = os.path.join("..",'data','microglia','RFP1_denoised')
 path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
@@ -429,24 +445,17 @@ for lists in vector_correspondance_2:
 fv = extract_feature_vectors(experiment1,simple_trajectories1)
 fv2 = extract_feature_vectors(experiment2,simple_trajectories2)
 
-fv=fv.transpose()
-fv2=fv2.transpose()
-
 total = np.concatenate((fv,fv2),axis=0)
 
 #Clustering:
 
 #total = total.reshape((total.shape[1]),total.shape[0])
 
-total[:,1]=total[:,5]  #Not keep the min length and replace with max width
-total = total[:,0:3]
 scaler = StandardScaler()
 total = scaler.fit_transform(total)
 kmeans = KMeans(n_clusters=3,n_init=400)
 
 predictions = kmeans.fit_predict(total)
-d,preds=separate_trajectories(predictions,correspondance1)
-print np.count_nonzero(d),d.size
 
 cv2.imshow("Frames classified",show_multiple_on_scale(experiment1,simple_trajectories1,correspondance1,predictions))    
 
@@ -468,15 +477,19 @@ frac1_2 = float(np.count_nonzero(predictions2==1))/predictions2.size
 
 frac2_1 = float(np.count_nonzero(predictions1==2))/predictions1.size
 frac2_2 = float(np.count_nonzero(predictions2==2))/predictions2.size
-
+"""
 
 #Do same with experiments 2 and 7
 path3 = os.path.join("..",'data','microglia','2_denoised')
 path4 = os.path.join("..",'data','microglia','7_denoised')
+
+path4_arms = os.path.join("..",'data','microglia','7_arms')
+path4_bodies = os.path.join("..",'data','microglia','7_bodies')
 clf_name3 = "clf_exp2.pkl"
 clf_name4 = "clf_exp7.pkl"
 experiment3 = Experiment(path3,"","")
-experiment4 = Experiment(path4,"","")
+experiment4 = Experiment(path4,path4_bodies,path4_arms)
+#experiment4.process_from_track()
 experiment3.load()
 experiment4.load()
 
@@ -489,17 +502,10 @@ correspondances4 = correspondance_vector(trajectories4)
 fv3 = extract_feature_vectors(experiment3,trajectories3)
 fv4 = extract_feature_vectors(experiment4,trajectories4)
 
-fv3=fv3.transpose()
-fv4=fv4.transpose()
 
 total34 = np.concatenate((fv3,fv4),axis=0)
 
 #Clustering:
-
-#total = total.reshape((total.shape[1]),total.shape[0])
-
-total34[:,1]=total34[:,5]  #Not keep the min length and replace with max width
-total34 = total34[:,0:3]
 total34 = scaler.fit_transform(total34)
 preds34 = kmeans.predict(total34)
 
@@ -508,12 +514,7 @@ preds4 = preds34[len(correspondances3):]
 
 f3 = temporal_evolution(experiment3,trajectories3,preds3,correspondances3)
 f4 = temporal_evolution(experiment4,trajectories4,preds4,correspondances4)
-
-def plot_clf_vector(fv):
-    plt.figure()
-    for i in range(fv.shape[1]):
-        plt.plot(fv[:,i])
-        
+    
 plot_clf_vector(f3)
 plt.title("control")
 plot_clf_vector(f4)
@@ -521,14 +522,7 @@ plt.title("LPS")
         
 cv2.imshow("Frames classified",show_multiple_on_scale(experiment4,trajectories4,correspondances4,preds4))
 
-def get_fractions(predictions):
-    """Returns the fraction of each class in predictions"""
-    n_classes=int(np.max(predictions))+1
-    results = np.zeros(n_classes)
-    nb_elements = predictions.size
-    for i in range(n_classes):
-        results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
-    return results
+
 print get_fractions(preds3),"control"
 print get_fractions(preds4),"LPS"
 print get_fractions(predictions1),"control"
@@ -536,8 +530,6 @@ print get_fractions(predictions2),"LPS"
 
 kmeans_all = KMeans(n_clusters=3,n_init=400)
 total_preds = np.concatenate((fv,fv2,fv3,fv4),axis = 0)
-total_preds[:,1]=total_preds[:,5]  #Not keep the min length and replace with max width
-total_preds = total_preds[:,0:3]
 
 scaler_total = StandardScaler()
 total_preds = scaler_total.fit_transform(total_preds)
@@ -549,3 +541,4 @@ p2 = predd[len(correspondance1):len(correspondance2)+len(correspondance1)]
 p3=predd[len(correspondance2)+len(correspondance1):len(correspondance2)+len(correspondance1)+len(correspondances3)]
 p4=predd[len(correspondance2)+len(correspondance1)+len(correspondances3):]
 cv2.imshow("Frames classified",show_multiple_on_scale(experiment4,trajectories4,correspondances4,p4))
+"""

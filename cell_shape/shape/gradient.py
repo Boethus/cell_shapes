@@ -8,26 +8,33 @@ Created on Sun Jul  2 20:22:05 2017
 import os
 from find_arms import Experiment,loadObject
 from process_trajectories import Feature_Extractor
+import numpy as np
 
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path_arms = os.path.join("..",'data','microglia','1_arms')  
-
-experiment1 = Experiment(path,path_centers,path_arms)
-experiment1.load()
-#experiment1.track_arms_and_centers()
-simple_trajectories1 = loadObject("corrected_normal_exp1")
-simple_trajectories1 = filter(lambda x:x[0]!="g",simple_trajectories1)
-feature_extractor = Feature_Extractor(experiment1)
-
-def gradient_in_traj(feature_vector,correspondances,vector1,vector2):
+def feature_vector_per_traj(feature_vector,correspondances):
     """Finds the gradients in trajcetory between vector1 and vetor2
     from a kmeans clustering"""
     max_index = correspondances[-1][0]
+    print max_index
     out_vectors = []
     for i in range(max_index):
         out_vectors.append([])
     for i in range(len(correspondances)):
         traj,cell=correspondances[i]
-        out_vectors[traj].append(feature_vector[i])
-        
+        out_vectors[traj].append(feature_vector[i,:])
+    return out_vectors
+
+def gradient_in_traj(feature_vectors,vector1,vector2):
+    """A trajectory represented by a set of feature vectors
+    in a list of numpy arrays"""
+    gradients = []
+    direction = vector2-vector1
+    for i in range(1,len(feature_vectors)):
+        grad = feature_vectors[i]-feature_vector[i-1]
+        gradients.append(np.dot(grad,direction))
+    return gradients
+    
+vectors_kmeans = kmeans.cluster_centers_
+vec1 = vectors_kmeans[0,:]
+vec2 = vectors_kmeans[1,:]
+vec3 = vector_kmeans[2,:]   
+out = feature_vector_per_traj(fv,correspondance1)

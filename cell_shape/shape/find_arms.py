@@ -942,7 +942,16 @@ class Experiment(object):
         self.compute_all_trajectories()
         self.classify_events()
         self.save()
-
+    def process_from_track(self):
+        self.track_arms_and_centers()
+        print "arms assignment..."
+        self.assign_arm()
+        print "processing unsure arms"
+        process_unsure_arms(self)
+        print "compute trajectories"
+        self.compute_all_trajectories()
+        self.classify_events()
+        self.save()
 def classify_complex_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_complex_trajectory(complex_trajectories[i],experiment,50)

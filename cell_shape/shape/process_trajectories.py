@@ -181,7 +181,7 @@ class Feature_Extractor(object):
             -Nr arms"""
         n=3  #Number of parameters
         n_cells = len(self.trajectory.cells)
-        feature_vector_total = np.zeros((n,n_cells))
+        feature_vector_total = np.zeros((n_cells,n))
         distance_list,_,distance_dict_list = self.find_distance()
         
         i=0 #Iteration counter
@@ -190,10 +190,13 @@ class Feature_Extractor(object):
             distances = distance_list[i]
             thicknesses = thickness_list[cell.frame_number]
             feature_vector[0:3] = distribution_vector(distances)
-            feature_vector[2] = 0
-            if len(thicknesses)>0:
-                feature_vector[2] = max(thicknesses)
-            feature_vector_total[:,i]=feature_vector
+            feature_vector[1] = 0
+            thicknesses_cell=[]
+            for arm_label in cell.arms:
+                thicknesses_cell.append(thicknesses[arm_label])
+            if len(thicknesses_cell)>0:
+                feature_vector[1] = max(thicknesses_cell)
+            feature_vector_total[i,:]=feature_vector
             i+=1
         return feature_vector_total
         
