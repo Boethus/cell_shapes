@@ -1140,6 +1140,7 @@ def get_from_folder(folder_name):
         tmp_l = loadObject(path+str(i)+".pkl")
         l.extend(tmp_l)
     return l
+colors = ['green','red','blue','pink','yellow']
 #--------------------------Script-----------------------------------------------
 """
 path = os.path.join("..",'data','microglia','7_denoised')
