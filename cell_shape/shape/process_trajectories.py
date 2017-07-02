@@ -179,7 +179,7 @@ class Feature_Extractor(object):
             -Arm width (mean/min_length/max_length)
             -body radius
             -Nr arms"""
-        n=8  #Number of parameters
+        n=3  #Number of parameters
         n_cells = len(self.trajectory.cells)
         feature_vector_total = np.zeros((n,n_cells))
         distance_list,_,distance_dict_list = self.find_distance()
@@ -188,32 +188,11 @@ class Feature_Extractor(object):
         for cell in self.trajectory.cells:
             feature_vector = np.zeros(n)
             distances = distance_list[i]
-            distance_dict = distance_dict_list[i]
             thicknesses = thickness_list[cell.frame_number]
-            if len(distance_dict)>0:
-                min_length_arm = min(distance_dict,key=distance_dict.get)
-                max_length_arm = max(distance_dict,key=distance_dict.get)
-            else:
-                min_length_arm=0
-                max_length_arm=0
-            mean_thickness=0
-            for arm_label in cell.arms:
-                mean_thickness+=thicknesses[arm_label]
-            if len(distance_dict)>0:
-                mean_thickness/=len(distance_dict)
             feature_vector[0:3] = distribution_vector(distances)
-            feature_vector[3] = mean_thickness
-            if len(distance_dict)>0:
-                feature_vector[4] = min(thicknesses)
-                feature_vector[5] = max(thicknesses)
-                
-            else:
-                feature_vector[4] = 0
-                feature_vector[5] = 0
-            body = self.open_body(cell.frame_number)
-            area=np.count_nonzero(body==(cell.body+1) )
-            feature_vector[6] = np.sqrt(area)
-            feature_vector[7] = len(cell.arms)
+            feature_vector[2] = 0
+            if len(thicknesses)>0:
+                feature_vector[2] = max(thicknesses)
             feature_vector_total[:,i]=feature_vector
             i+=1
         return feature_vector_total

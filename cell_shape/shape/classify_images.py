@@ -469,17 +469,6 @@ frac1_2 = float(np.count_nonzero(predictions2==1))/predictions2.size
 frac2_1 = float(np.count_nonzero(predictions1==2))/predictions1.size
 frac2_2 = float(np.count_nonzero(predictions2==2))/predictions2.size
 
-out_arms=get_arms_list_per_frame(experiment1,simple_trajectories1)
-
-out_arm_big = get_longer_arm(experiment1,20,out_arms)
-out_resized = resize_image(out_arm_big,new_size=64)
-m.si2(out_arm_big,out_resized,"max size : "+str(max(out_arm_big.shape)),"resized")
-
-out_rechanged = resize_image(out_resized,max(out_arm_big.shape))
-m.si2(out_arm_big,out_rechanged,"original","reconstructed")
-
-
-
 
 #Do same with experiments 2 and 7
 path3 = os.path.join("..",'data','microglia','2_denoised')
