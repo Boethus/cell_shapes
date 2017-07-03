@@ -16,6 +16,8 @@ from keras.layers.convolutional import Conv2D, MaxPooling2D,Conv2DTranspose
 from keras.layers.core import Flatten
 from keras.optimizers import SGD
 from keras.datasets import mnist
+
+from discrimination import MinibatchDiscrimination
 import numpy as np
 from PIL import Image
 import glob

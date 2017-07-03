@@ -54,5 +54,17 @@ def shuffle_protrusions(path):
     for i in range(len(dat)):
         img = dat[i]
         cv2.imwrite(os.path.join(path,str(i)+".png"),img)
-rotations(savepath)
-shuffle_protrusions(savepath)
+        
+def append_protrusions(path,new_path):
+    dat = load_protrusions_list(path)
+    look_for = os.path.join(new_path,"*")
+    arms_list = glob.glob(look_for)
+    new_index = len(arms_list)
+    
+    for i in range(len(dat)):
+        img = dat[i]
+        cv2.imwrite(os.path.join(new_path,str(new_index+i)+".png"),img)
+
+path = r"D:\data_aurelien\data\deep_learning\cells2"
+new_path = r"D:\data_aurelien\data\deep_learning\cells"
+append_protrusions(path,new_path)
