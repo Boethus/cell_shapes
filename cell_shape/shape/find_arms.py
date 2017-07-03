@@ -5,12 +5,6 @@ Created on Tue May 23 11:25:34 2017
 @author: univ4208
 """
 
-# -*- coding: utf-8 -*-
-"""
-Created on Fri May 19 10:34:26 2017
-
-@author: univ4208
-"""
 
 import os
 import sys
@@ -948,7 +942,16 @@ class Experiment(object):
         self.compute_all_trajectories()
         self.classify_events()
         self.save()
-
+    def process_from_track(self):
+        self.track_arms_and_centers()
+        print "arms assignment..."
+        self.assign_arm()
+        print "processing unsure arms"
+        process_unsure_arms(self)
+        print "compute trajectories"
+        self.compute_all_trajectories()
+        self.classify_events()
+        self.save()
 def classify_complex_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_complex_trajectory(complex_trajectories[i],experiment,50)
@@ -1079,20 +1082,80 @@ def gs_score_each_traj(experiment,simple_trajectories,score_list):
         score = gs_score_trajectory(experiment,traj,score_list)
         results.append(score)
     return results
+
+#------------Classify manually trajectories-----------
+def classify_trajectory2(traj,experiment):
+    """Displays traj and prompts the user about what to do"""
+    show_trajectory(traj,experiment,50)
+    possible_answers = ['g','r','m','e','a']
+    inp = ''
+    while(not inp in possible_answers):
+        inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
+    
+    if inp=='a':
+        inp = classify_trajectory2(traj,experiment)
+    return inp
+
+def classify_simple_trajectories(trajectories,experiment):
+    classifications_normal = []
+    
+    for i in range(len(trajectories)):
+        print "index",i
+        #cv2.destroyAllWindows()
+        traj = trajectories[i]
+        inp= classify_trajectory2(traj,experiment)
+        if inp!='e' and inp !='a':    #otherwise it is an error
+            classifications_normal.append((inp,traj))
+    return classifications_normal
+
+def w_trajectory_classification(trajectories,experiment,name):
+    """Wraps up all methods of trajectory classification.
+    Parameters:
+        trajectories: list of trajectories manually validated
+        experiment: instance of the class Experiment already processed
+        name: the name with which the classification will be saved"""
+    
+    if os.path.isdir(name):
+        print "Careful name already exsts. Proceed?"
+    tmp_dir = "tmp_"+name
+    os.mkdir(tmp_dir)   #Store intermediate results
+    
+    classifs=[]
+    for i in range(5):
+        beg = int(float(len(trajectories)*i)/5)
+        end=int(float(len(trajectories)*(i+1))/5)
+        print "Chunk",i
+        if i==4:
+            end = len(trajectories)-1
+        clf1 = classify_simple_trajectories(trajectories[beg:end],experiment)
+        saveObject( os.path.join(tmp_dir,name+str(i)+".pkl") ,clf1)
+        classifs.extend(clf1)
+    saveObject(name+".pkl",classifs)
+    
+def get_from_folder(folder_name):
+    """gets all the bits of experiment in a foler and gathers them together"""
+    l=[]
+    path = os.path.join(folder_name,folder_name[4:])
+    for i in range(5):
+        tmp_l = loadObject(path+str(i)+".pkl")
+        l.extend(tmp_l)
+    return l
+colors = ['green','red','blue','pink','yellow']
 #--------------------------Script-----------------------------------------------
 """
-path = os.path.join("..",'data','microglia','RFP1_denoised')
-path_centers = os.path.join("..",'data','microglia','1_centers_improved') 
-path_arms = os.path.join("..",'data','microglia','1_arms')    
-
+path = os.path.join("..",'data','microglia','7_denoised')
+path_centers = os.path.join("..",'data','microglia','7_bodies') 
+path_arms = os.path.join("..",'data','microglia','7_arms')    
+sys.path.append("../dahlia")
 #redefine_labels(path_centers)
 
 experiment3 = Experiment(path,path_centers,path_arms)
 #experiment3.process_from_scratch()
-experiment3.load()
-complex_trajectories = get_complex_trajectories(experiment3)
 
-simple_trajectories = find_simple_trajectories(experiment3,complex_trajectories)   
+experiment3.load()
+#complex_trajectories = get_complex_trajectories(experiment3)
+
+simple_trajectories = find_simple_trajectories(experiment3,[])   
 
 #Filtering the size of simple_trajectories: keep only trajectories with more than 3 frames
 #simple_trajectories = filter(lambda x: len(x.cells)>3,simple_trajectories)
@@ -1110,90 +1173,7 @@ traj_n_score = [x[0] for x in traj_n_score if x[1]<0.9 and len(x[0].cells)>3]  #
 num_traj = len(simple_trajectories)
 #traj_n_score[num_traj-8].show(experiment3,0)
 print "after gaussian elimination:",len(traj_n_score),"remain"
+
+clf_name = "clf_exp7"
+w_trajectory_classification(traj_n_score,experiment3,clf_name)
 """
-
-def classify_trajectory2(traj,experiment):
-    """Displays traj and prompts the user about what to do"""
-    show_trajectory(traj,experiment,50)
-    possible_answers = ['g','r','m','e','a']
-    inp = ''
-    while(not inp in possible_answers):
-        inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
-    
-    if inp=='a':
-        inp = classify_trajectory2(traj,experiment)
-    return inp
-
-def classify_simple_trajectories(trajectories,experiment):
-    classifications_normal = []
-    for i in range(len(trajectories)):
-        print "index",i
-        #cv2.destroyAllWindows()
-        traj = trajectories[i]
-        inp= classify_trajectory2(traj,experiment)
-        if inp!='e' and inp !='a':    #otherwise it is an error
-            classifications_normal.append((inp,i))
-    return classifications_normal
-
-#if t: gaussian
-# if 
-"""
-classifs=[]
-for i in range(5):
-    beg = int(float(len(traj_n_score)*i)/5)
-    end=int(float(len(traj_n_score)*(i+1))/5)
-    print "blaaaaaa",i
-    if i==4:
-        end = len(traj_n_score)-1
-    clf1 = classify_simple_trajectories(traj_n_score[beg:end],experiment3)
-    saveObject("rfp1_simple_trajs_part"+str(i),clf1)
-    classifs.append(clf1)
-
-#WTF: index 52
-results="eeeeeeeeeeeeeeegegegeeemeemmereererremrreeeegeeemrreereremeemeeereeeeeeeeemeermrr"
-
-total_classifs = []
-for i in range(5):
-    beg = int(float(len(traj_n_score)*i)/5)
-    end=int(float(len(traj_n_score)*(i+1))/5)
-    if i==4:
-        end = len(traj_n_score)-1
-    new_list = classifs[i]
-    new_list = [(x,y+beg) for x,y in new_list]
-    total_classifs.extend(new_list)
-    
-total_classifs_w_traj = [(x,traj_n_score[y]) for x,y in total_classifs]
-
-indexes_to_change = []
-
-for i,(x,elt) in enumerate(total_classifs_w_traj):
-    if x=='a':
-        new_val = classify_trajectory2(elt,experiment3)
-        indexes_to_change.append((i,new_val))
-
-corrected_classifs = total_classifs_w_traj[:]
-for i,val in indexes_to_change:
-    corrected_classifs[i] = (val,total_classifs_w_traj[i][1])
-corrected_classifs = filter((lambda x:x[0]!="e"),corrected_classifs)
-"""
-"""
-selected_trajs = loadObject("classification_normal_exp8")
-trajecs_n_score = zip(simple_trajectories,gs_scores)
-corresp_scores = []
-for traj in selected_trajs:
-    corresp_score = [score for x,score in trajecs_n_score if x==traj[1]]
-    if len(corresp_score)!=1:
-        print "error length"
-    corresp_scores.append(corresp_score)"""
-#Experiment 8:
-#56+81 seen twice? same 63,71
-#Analysis on this dataset: we find
-#From Gaussian score>0.76, only gaussians if mini gaussian size 21
-#if mini gaussian size =11 then 0.9 is the smallest score
-
-#in simple trajectory : 74 out of 580 are medium or good, soit 12%
-
-#Experiment RFP: 163 might be ok
-
-
-"""Tous les ==a sont à refaire"""

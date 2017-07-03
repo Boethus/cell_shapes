@@ -436,6 +436,7 @@ def si(img,title=None):
     plt.imshow(img,cmap='gray')
     if title:
         plt.title(title)
+    plt.show()
         
 def si2(im1,im2,title1=None,title2=None):
     plt.figure()
@@ -447,6 +448,7 @@ def si2(im1,im2,title1=None,title2=None):
     plt.imshow(im2,cmap='gray')
     if title2:
         plt.title(title2)
+    plt.show()
         
 def show_points_on_img(mask,img):
     """Shows the points encoded in mask on img"""

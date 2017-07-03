@@ -1,6 +1,8 @@
 (dp1
 S'path'
 p2
-S'/home/aurelien/Documents/rotation1/cell_shape/data/microglia/7_denoised'
+S'.'
+sS'clf_path'
 p3
+S'.'
 s.

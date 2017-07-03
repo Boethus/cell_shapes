@@ -9,7 +9,7 @@ Created on Tue May 23 11:25:34 2017
 import os
 import sys
 sys.path.append(os.path.join(".","..","segmentation"))
-import methods as m
+import dahlia_methods as m
 import numpy as np
 import scipy.ndimage as ndi
 import cv2
@@ -18,16 +18,23 @@ import glob
 from screeninfo import get_monitors
 import cPickle as pickle
 from sklearn.neighbors import KNeighborsClassifier
+import copy
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+import random
+
 #import process_trajectories as pt
 
 
 monitor = get_monitors()[0]
-width_monitor = monitor.width
-height_monitor = monitor.height
+width_monitor = monitor.width/2
+height_monitor = monitor.height/2
 
 plt.close('all')
 
-
+def number_elts_in_folder(folder):
+    l = glob.glob(folder+"/*.png")
+    return len(l)
 def reorder_list(liste,max_body):
     """liste is a correspondance list. Each of these correspondance 
     lists assigns a body to a cell arm. This method assigns all of its arms to 
@@ -325,24 +332,6 @@ def morphology_split(frame,label,number,max_labels_in_frame):
         frame.setflags(write=1)
         frame[y:y+h,x:x+w]=lab
     return success
-
-def process_mergings(mergings):
-    path_clusters = os.path.join("..","data","microglia","1_centers_cluster")
-    for i in range(241):
-        print "process merging iteration ",i
-        centers = m.open_frame(path_centers,i+1)
-        indexes_merged = np.where(mergings[i,:]!=0)[0]
-        values_merged = np.zeros(indexes_merged.shape)
-    
-        for k,elt in enumerate(indexes_merged):
-            values_merged[k] = mergings[i,elt]
-        labels_merged = indexes_merged+1
-        out = np.zeros(centers.shape,dtype=np.int)
-        out[centers>0] = 1
-        for label,value in zip(labels_merged,values_merged):
-            if value>0:
-                out[centers==label] = value+1
-        cv2.imwrite(os.path.join(path_clusters,str(i)+".png"), out )
         
 def redefine_labels(path_centers):
     """In case an index disappeared"""
@@ -549,7 +538,7 @@ class Experiment(object):
             label_center,label_arms = self.segment_arms_n_centers(i)
             success = success and cv2.imwrite(os.path.join(self.body_path,str(i)+".png"),label_center)
             success = success and cv2.imwrite(os.path.join(self.arm_path,str(i)+".png"),label_arms)
-            print "file ",i
+            print "Segmenting image ",i
     
     def segment_arms_n_centers(self,nr):
         """Segments frame number nr into bodies and arms """
@@ -896,7 +885,7 @@ class Experiment(object):
 
 def classify_complex_trajectory(traj,experiment):
     """Displays traj and prompts the user about what to do"""
-    show_complex_trajectory(complex_trajectories[i],experiment,50)
+    show_complex_trajectory(traj[0],experiment,50)
     possible_answers = ['r','w','t','m','q','e']
     inp = ''
     while(not inp in possible_answers):
@@ -938,40 +927,6 @@ def find_simple_trajectories(experiment,complex_trajectories):
                 trajectories_remaining.append(traj)
     return trajectories_remaining
 
-def classify_trajectory(traj,experiment):
-    """Displays traj and prompts the user about what to do"""
-    show_trajectory(traj,experiment,50)
-    possible_answers = ['r','w','t','m','q','e']
-    inp = ''
-    while(not inp in possible_answers):
-        inp= raw_input("""how would you classify this image: ramified, withdrawal, transitional,
-                      motile, error (r/w/t/m/e)? Press q to see the sequence again\n""")
-    
-    if inp=='q':
-        classify_trajectory(traj,experiment)
-    return inp
-
-classifying = False
-if classifying:
-    classifications = []
-    for i in range(84,len(complex_trajectories)):
-        print i
-        #cv2.destroyAllWindows()
-        traj = complex_trajectories[i]
-        inp= classify_complex_trajectory(traj,experiment3)
-        if inp!='e' and inp!='q':    #otherwise it is an error
-            classifications.append((inp,traj))
-
-            
-def replace_classification_results(classif_results,complex_traj):
-    """Replaces the trajectories in classif_results by the ones in complex_traj"""
-    for i,(label,traj) in enumerate(classif_results):
-        new_traj = [x for x in complex_traj if x[0]==traj[0] ]
-        if len(new_traj)!=1:
-            print "eror shape"
-        else:
-            new_traj = new_traj[0]
-            classif_results[i]=(label,new_traj)
 #Untested
 def gaussian_score_list(path,path_bodies,nr):
     """computes the gaussian score for frame number nr in path.
@@ -1024,15 +979,14 @@ def gs_score_each_traj(experiment,simple_trajectories,score_list):
         score = gs_score_trajectory(experiment,traj,score_list)
         results.append(score)
     return results
-#--------------------------Script-----------------------------------------------
-
+#--------------------------See each trajectory-----------------------------------------------
 def classify_trajectory2(traj,experiment):
     """Displays traj and prompts the user about what to do"""
     show_trajectory(traj,experiment,50)
-    possible_answers = ['g','r','m','e','a']
+    possible_answers = ['r','m','e','a']
     inp = ''
     while(not inp in possible_answers):
-        inp= raw_input("""how would you classify this image: gaussian,relevant,maybe, error (g/r/m/e)? Press a to see the sequence again\n""")
+        inp= raw_input("""how would you classify this image: relevant,maybe, error (r/m/e)? Press a to see the sequence again\n""")
     
     if inp=='a':
         inp = classify_trajectory2(traj,experiment)
@@ -1040,74 +994,567 @@ def classify_trajectory2(traj,experiment):
 
 def classify_simple_trajectories(trajectories,experiment):
     classifications_normal = []
+    
     for i in range(len(trajectories)):
         print "index",i
         #cv2.destroyAllWindows()
         traj = trajectories[i]
         inp= classify_trajectory2(traj,experiment)
         if inp!='e' and inp !='a':    #otherwise it is an error
-            classifications_normal.append((inp,i))
+            classifications_normal.append((inp,traj))
     return classifications_normal
 
-#if t: gaussian
-# if 
-"""
-classifs=[]
-for i in range(5):
-    beg = int(float(len(traj_n_score)*i)/5)
-    end=int(float(len(traj_n_score)*(i+1))/5)
-    print "blaaaaaa",i
-    if i==4:
-        end = len(traj_n_score)-1
-    clf1 = classify_simple_trajectories(traj_n_score[beg:end],experiment3)
-    saveObject("rfp1_simple_trajs_part"+str(i),clf1)
-    classifs.append(clf1)
-
-#WTF: index 52
-results="eeeeeeeeeeeeeeegegegeeemeemmereererremrreeeegeeemrreereremeemeeereeeeeeeeemeermrr"
-
-total_classifs = []
-for i in range(5):
-    beg = int(float(len(traj_n_score)*i)/5)
-    end=int(float(len(traj_n_score)*(i+1))/5)
-    if i==4:
-        end = len(traj_n_score)-1
-    new_list = classifs[i]
-    new_list = [(x,y+beg) for x,y in new_list]
-    total_classifs.extend(new_list)
+def w_trajectory_classification(experiment,name):
+    """Wraps up all methods of trajectory classification.
+    Parameters:
+        experiment: instance of the class Experiment already processed
+        name: the name with which the classification will be saved"""
     
-total_classifs_w_traj = [(x,traj_n_score[y]) for x,y in total_classifs]
-
-indexes_to_change = []
-
-for i,(x,elt) in enumerate(total_classifs_w_traj):
-    if x=='a':
-        new_val = classify_trajectory2(elt,experiment3)
-        indexes_to_change.append((i,new_val))
-
-corrected_classifs = total_classifs_w_traj[:]
-for i,val in indexes_to_change:
-    corrected_classifs[i] = (val,total_classifs_w_traj[i][1])
-corrected_classifs = filter((lambda x:x[0]!="e"),corrected_classifs)
-"""
-"""
-selected_trajs = loadObject("classification_normal_exp8")
-trajecs_n_score = zip(simple_trajectories,gs_scores)
-corresp_scores = []
-for traj in selected_trajs:
-    corresp_score = [score for x,score in trajecs_n_score if x==traj[1]]
-    if len(corresp_score)!=1:
-        print "error length"
-    corresp_scores.append(corresp_score)"""
-#Experiment 8:
-#56+81 seen twice? same 63,71
-#Analysis on this dataset: we find
-#From Gaussian score>0.76, only gaussians if mini gaussian size 21
-#if mini gaussian size =11 then 0.9 is the smallest score
-
-#in simple trajectory : 74 out of 580 are medium or good, soit 12%
-
-#Experiment RFP: 163 might be ok
+    if os.path.isdir(name):
+        print "Careful name already exsits. Proceed?"
+    file_name = name.split("\\")[-1]
+    path = name[:-len(file_name)]
+    tmp_dir = os.path.join(path,"tmp_"+file_name)
+    if not os.path.isdir(tmp_dir):
+        os.mkdir(tmp_dir)   #Store intermediate results
+    trajectories = find_simple_trajectories(experiment,[])
+    classifs=[]
+    
+    for i in range(5):
+        beg = int(float(len(trajectories)*i)/5)
+        end=int(float(len(trajectories)*(i+1))/5)
+        print "Chunk",i
+        if i==4:
+            end = len(trajectories)-1
+        clf1 = classify_simple_trajectories(trajectories[beg:end],experiment)
+        saveObject( os.path.join(tmp_dir,name+str(i)+".pkl") ,clf1)
+        classifs.extend(clf1)
+    saveObject(name+".pkl",classifs)
+    
+def get_from_folder(folder_name):
+    """gets all the bits of experiment in a foler and gathers them together"""
+    l=[]
+    path = os.path.join(folder_name,folder_name[4:])
+    for i in range(5):
+        tmp_l = loadObject(path+str(i)+".pkl")
+        l.extend(tmp_l)
+    return l
 
 
-"""Tous les ==a sont à refaire"""
+#-------------Classification--------------------------------
+def distribution_vector(list_of_elts):
+    """returns a 3*1 vector containing [mean,min,max] of list"""
+    out = np.zeros(3)
+    if len(list_of_elts)>0:
+        out[0] = np.mean(np.asarray(list_of_elts))
+        out[1] = min(list_of_elts)
+        out[2] = max(list_of_elts)
+    return out
+
+def centroid(img,label):
+    """returns x,y the position of the centroid of label in img"""
+    x,y = np.where(img==label)
+    return (np.mean(x),np.mean(y))
+
+class Feature_Extractor(object):
+    """Class meant to extract features from trajectories in a certain experiment"""
+    def __init__(self,experiment):
+        self.experiment = experiment
+        self.trajectory = 0
+    
+    def set_trajectory(self,trajectory):
+        self.trajectory = trajectory
+        
+    def open_arm(self,nr):
+        """opens the arms corresponding to frame nr"""
+        arms = m.open_frame(self.experiment.arm_path,nr+1)
+        return arms
+    def open_body(self,nr):
+        """Opens the image containing the labeled bodies in frame nr"""
+        body = m.open_frame(self.experiment.body_path,nr+1)
+        return body
+
+    def find_distance(self):
+        """finds the distance of the tip (ie most distant point) of an arm to the
+        cell body
+        Returns :
+            -distance_list: a list with size nr frames in the trajectory.
+            Contains a list of arms distances in each frame
+            -trajectories_container: a list containing the trajectories,
+            each trajectory being here a tuple (frame number,arm size)
+            -distance_dict_list: a list with size nr frames in the trajectory
+            contains a list of dictionnaries associating arm label with length"""
+        verification = False
+        
+        cells = self.trajectory.cells
+        distance_list = []
+        distance_dict_list = []
+        label_list = []   #Contains the labels corresopnding to the same index in distance list
+        for cell in cells:
+            frame_number = cell.frame_number
+            body = cell.body
+            arms = cell.arms
+            #Don't forget the -1 because we start indexing from 0
+            frame_body = self.open_body(frame_number)-1
+            frame_arm = self.open_arm(frame_number)-1
+            body_mask = (frame_body==body).astype(np.uint8)
+            xcb,ycb = centroid(frame_body,body)
+            """kernel = np.ones((5,5),np.uint8)
+            dilation = cv2.dilate(body_mask,kernel,iterations = 1)"""
+            distance_arms=[]
+            distance_dict = {}
+            for arm in arms:
+                arm_mask = frame_arm==arm
+                """arm_root = dilation.copy()
+                arm_root[~arm_mask]=0
+                #(xc,yc are approximately the coordinates of the contact between arm and body)
+                xc,yc = np.where(arm_root!=0)
+                xc = np.mean(xc)
+                yc = np.mean(yc)"""
+                
+                #Compute the distance between each pixel in arm and the root
+                distance_x,distance_y = np.where(arm_mask)
+                distances = np.sqrt((distance_x-xcb)**2+(distance_y-ycb)**2)
+                distance = np.max(distances)
+                
+                #Just used fordebugging
+                if cell.frame_number==5 and verification:
+                    m.si(2*body_mask+arm_mask.astype(np.uint8))
+                    xd = distance_x[distances==distance]
+                    yd = distance_y[distances==distance]
+                    plt.plot(yd,xd,"o")
+                #End debugging
+                label_list.append(arm)
+                distance_arms.append(distance)
+                distance_dict[arm] = distance
+            distance_list.append(distance_arms)
+            distance_dict_list.append(distance_dict)
+        dist_dict_list = copy.deepcopy(distance_dict_list)
+        #What we want out: a list of "trajectories", each of them being a list of:
+        #-Frame numbers
+        #-distance
+        beginning = self.trajectory.beginning
+        end = self.trajectory.end
+        #Because badly coded from the beginning
+        if end==240:
+            end-=1
+        trajectories_container = []
+        for i,dict_list in enumerate(distance_dict_list):
+            frame_nr = beginning+i
+            to_pop_list = []
+            for arm in dict_list:
+                trajectories_list = []
+                indices_arm,labels_arm = self.experiment.find_trajectory(frame_nr,arm)
+                indices_arm = np.asarray(indices_arm)
+                labels_arm = np.asarray(labels_arm)
+                index_mask = np.logical_and(indices_arm>=beginning,indices_arm<=end)
+                
+                for j,lab in zip(indices_arm[index_mask],labels_arm[index_mask]):
+                    dicto_list = distance_dict_list[j-beginning]
+                    if lab in dicto_list:
+                        trajectories_list.append((j,dicto_list[lab]))
+                        
+                        to_pop_list.append((j-beginning,lab))
+                trajectories_container.append(trajectories_list)
+            for k,l in to_pop_list:
+                distance_dict_list[k].pop(l)
+            to_pop_list = []
+        return distance_list,trajectories_container,dist_dict_list
+
+    def plot_distances(self,size_filter=0,new_fig=True):
+        """Plots the distances profiles for all arms trajectories longer than
+        size filter"""
+        _,traj_list,_ = self.find_distance()
+        print traj_list
+        if new_fig:
+            plt.figure()
+            plt.title("Evolution of ramification length")
+            plt.ylabel("length")
+            plt.xlabel("frame nr")
+            
+        for lists in traj_list:
+            x=[]
+            y=[]
+            if len(lists)>size_filter:   #show only longer, relevant trajectories
+                for (u,v) in lists:
+                    x.append(u)
+                    y.append(v)
+                    plt.plot(x,y)
+
+                    
+    def feature_vector(self,thickness_list):
+        """extracts a n dimensional feature vector for each frame. 
+        Parameters:
+            -thickness_list: a list of list with the thickness of each
+            arm in each frame
+        Returns:
+            -Arm length (mean/min/max)
+            -Arm width (mean/min_length/max_length)
+            -body radius
+            -Nr arms"""
+        n=3  #Number of parameters
+        n_cells = len(self.trajectory.cells)
+        feature_vector_total = np.zeros((n,n_cells))
+        distance_list,_,distance_dict_list = self.find_distance()
+        
+        i=0 #Iteration counter
+        for cell in self.trajectory.cells:
+            feature_vector = np.zeros(n)
+            distances = distance_list[i]
+            distance_dict = distance_dict_list[i]
+            thicknesses = thickness_list[cell.frame_number]
+                
+            feature_vector[0:3] = distribution_vector(distances)
+           
+            if len(distance_dict)>0:
+                feature_vector[1] = max(thicknesses)
+                
+            else:
+                feature_vector[1] = 0
+            feature_vector_total[:,i]=feature_vector
+            i+=1
+        return feature_vector_total
+
+def compute_thickness_list(path,nr):
+    """Computes the thickness of each arm in a frame and returns them as
+    a list
+    Parameters:
+        -path: path to the arms stack
+        -nr: number of the frame of interst (starting from1)
+    Returns:
+        -thickness_list: a list containing in position i the thickness of
+        the arm i"""
+    arms = m.open_frame(path,nr)
+    thick = cv2.distanceTransform((arms>0).astype(np.uint8),cv2.DIST_L2,3)
+    thickness_list=[]
+    for i in range(np.max(arms)):
+        thickness = np.max(thick[arms==i+1])
+        thickness_list.append(thickness)
+    return thickness_list    
+    
+def get_all_thicknesses(experiment):
+    all_thickness_list = []
+    for i in range(1,242):
+        print i
+        all_thickness_list.append( compute_thickness_list(experiment.arm_path,i))
+    return all_thickness_list
+"""keep only 0,5,2"""
+def extract_feature_vectors(experiment,simple_trajectories):
+    """Extracts the n dimensional feature vector from predefined trajectories and returns them as 
+    an unique array for clustering
+    Parameters:
+        experiment: instance of the class Experiment
+        simple_trajectories: list of simple trajectories
+    Returns:
+        feature_vector: (n_features*n_cells) numpy array
+        """
+    feature_extractor = Feature_Extractor(experiment)
+    
+    #Compute first feature vector to initialize the array
+    first_traj = simple_trajectories[0]
+    first_traj = first_traj[1]
+    feature_extractor.set_trajectory(first_traj)
+    print "computing all thicknesses list"
+    all_thickness_list = get_all_thicknesses(experiment)
+    feature_vector=feature_extractor.feature_vector(all_thickness_list)
+    for i in range(1,len(simple_trajectories)):
+        traj = simple_trajectories[i][1]
+        print "in simple trajectories loop"
+        feature_extractor.set_trajectory(traj)
+        new_vector = feature_extractor.feature_vector(all_thickness_list)
+        feature_vector = np.concatenate((feature_vector,new_vector),axis=1)
+    return feature_vector
+
+def w_classification(path_list):
+    """Wraps up the classification methods for the classified trajectories in
+    path_list
+    Parameters:
+        path_list: list of strings (paths) to the different processed datasets.
+    """
+    #1/ Extract feature vectors from all dataset
+    if len(path_list)==0:
+        return
+    fv=0
+    for i,path in enumerate(path_list):
+        trajectories = loadObject(os.path.join(path,"traj_selection.pkl"))
+        experiment = Experiment(path)
+        experiment.load()
+        if i==0:
+            fv = extract_feature_vectors(experiment,trajectories)
+            fv=fv.transpose()
+        else:
+            fv2 = extract_feature_vectors(experiment,trajectories)
+            fv2 = fv2.transpose()
+            fv = np.concatenate((fv,fv2),axis=0)
+    #2/Run Knn on this dataset.
+    scaler = StandardScaler()
+    fv = scaler.fit_transform(fv)
+    kmeans = KMeans(n_clusters=3,n_init=400)
+    
+    predictions = kmeans.fit_predict(fv)
+    return predictions,kmeans
+
+def correspondance_vector(trajectories):
+    """computes the correspondance vector as above"""
+    vector_correspondance = [ zip( [i]*len(x[1].cells) ,range(len(x[1].cells))) for i,x in enumerate(trajectories)]
+    correspondance=[]
+    for lists in vector_correspondance:
+        correspondance.extend(lists)
+    return correspondance
+
+def cell_bounding_box(experiment,cell,color='green'):
+    """given a cell in an experiment, returns a picture centered on this cell
+    overlaid with a certain color
+    Parameters:
+        experiment: instance of the class Experiment
+        cell: instance of the class Cell, found in experiment
+        color: string, specifies the color which needs to be overlaid.
+    Returns:
+        overlay: 3-D numpy array, image of the cell with a color mask
+    """
+    frame_number = cell.frame_number
+    frame = m.open_frame(experiment.path,frame_number+1)
+    body = m.open_frame(experiment.body_path,frame_number+1)
+    arm = m.open_frame(experiment.arm_path,frame_number+1)
+    
+    rois = body==(cell.body+1)
+    for elt in cell.arms:
+        rois = np.logical_or(rois,arm==elt+1)
+    im2,contours,hierarchy = cv2.findContours((rois).astype(np.uint8), 1, 2)
+    if len(contours)==1:
+        cnt = contours[0]
+    else:
+        #If find several contours, takes the largest
+        widths=[]
+        for i in range(len(contours)):
+            cnt = contours[i]
+            x,y,w,h = cv2.boundingRect(cnt)
+            widths.append(w)
+        indices = [i for i,wid in enumerate(widths) if wid==max(widths)]
+        indices = indices[0]
+        cnt = contours[indices]
+    
+    x,y,w,h = cv2.boundingRect(cnt)
+    
+    sub_frame = frame[y:y+h,x:x+w]
+    sub_frame*=int(255/np.max(sub_frame))  #To have balanced histograms
+    sub_rois = rois[y:y+h,x:x+w]
+    sub_rois=sub_rois.astype(np.uint8)*255
+    overlay = m.cv_overlay_mask2image(sub_rois,sub_frame,color)
+    return overlay
+
+def get_random_image(experiment,simple_trajs,correspondances,predictions,show=False):
+    """Returns a random image centered on a cell in a list of trajectories
+    Parameters: 
+        experiment: instance of the class Experiment
+        simple_trajs: list of trajectories
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+        predictions: numpy array containing the predicted class of each cell
+        show: bool, if True shows the image in a pyplot window
+    Returns:
+        image: numpy array, image centered on a cell with a color corresponding
+            to its class
+        label: int, specifies the class of the cell displayed
+    """
+    
+    index = int(random.random()*len(correspondances))
+    traj_index,cell_index = correspondances[index]
+    cell = simple_trajs[traj_index][1].cells[cell_index]
+    colors = ['green','red','blue','pink','yellow']
+    label = predictions[index]
+    image = cell_bounding_box(experiment,cell,colors[label%len(colors)])
+    if show:
+        plt.imshow(image,cmap='gray')
+        plt.title(str(label))
+    return image,label
+
+def show_multiple_on_scale(experiment,simple_trajs,correspondances,predictions):
+    """shows multiple images together. This method of display respects the scales of each 
+    image.
+    Paramters:
+        experiemnt: instance of the Experiment class
+        simple_trajs: list of simple trajectories
+        correspondances: list of tuples (trajectory_index,cell_index)
+        predictions: numpy array containing the predicted class of each cell
+    Returns:
+        out: composite image of classified cells"""
+    n_images = 5
+    im_list = []
+    max_dim1=0
+    max_dim2=0
+    for i in range(n_images**2):
+        im,lab = get_random_image(experiment,simple_trajs,correspondances,predictions)
+        im_list.append(im)
+        max_dim1 = max(im.shape[0],max_dim1)
+        max_dim2 = max(im.shape[1],max_dim2)
+    out = np.zeros((max_dim1*n_images,max_dim2*n_images,3),dtype=np.uint8)
+    for i in range(n_images**2):
+        k=i//n_images
+        l=i%n_images
+        out[k*max_dim1:k*max_dim1 + im_list[i].shape[0], l*max_dim2:l*max_dim2 + im_list[i].shape[1],:] = im_list[i]
+    return out
+
+def temporal_evolution(experiment,simple_trajectories,predictions,correspondances):
+    """Monitors the temporal evolution in terms of number of cells per class
+    """
+    class_list=[]
+    for i in range(experiment.n_frames-1):
+        class_list.append([])
+        
+    for i,(index_traj,index_cell) in enumerate(correspondances):
+        traj = simple_trajectories[index_traj][1]
+        cell=traj.cells[index_cell]
+        pred = predictions[i]
+        class_list[cell.frame_number].append(pred)
+    
+    n_classes=np.max(predictions)+1
+    fractions = np.zeros((experiment.n_frames,n_classes))
+    for i,classes in enumerate(class_list):
+        elements = np.asarray(classes)
+        n_elts_in_frame = elements.size
+        for j in range(n_classes):
+            fractions[i,j] = float(np.count_nonzero(elements==j))/n_elts_in_frame
+    return fractions
+
+
+def plot_clf_vector(fv):
+    plt.figure()
+    for i in range(fv.shape[1]):
+        plt.plot(fv[:,i])
+
+def get_fractions(predictions):
+    """Returns the fraction of each class in predictions"""
+    n_classes=int(np.max(predictions))+1
+    results = np.zeros(n_classes)
+    nb_elements = predictions.size
+    for i in range(n_classes):
+        results[i] = float(np.count_nonzero(predictions==(i)))/nb_elements
+    return results
+
+def write_movie(experiment,name,simple_trajectories,predictions,correspondances):
+    """Overlays all shape classifications to an entire movie, and writes it in 
+    a new folder
+    Parameters:
+        experiment: instance of the class Experiment
+        name: string, name of the folder where the new movie will be written
+        simple_trajectories: list of Trajectory
+        predictions: numpy array containing the predicted class of each cell
+        correspondances: list of tuples. correspondances[i] is (traj_number, cell_number)
+            corresponding to predictions[i]
+    """
+            
+    path = os.path.join("..","data","microglia",name)
+    colors = ['green','red','blue','pink','yellow']
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    #Separate each cell from each trajectory
+    cell_list=[]
+    for i in range(241):
+        cell_list.append([])
+        #Copy the frames in new directory. these frames will be modified by the loop
+        frame = m.open_frame(experiment.path,i+1)
+        cv2.imwrite(os.path.join(path,str(i+1)+".png"),frame)
+        
+    for i,(index_traj,index_cell) in enumerate(correspondances):
+        traj = simple_trajectories[index_traj][1]
+        cell=traj.cells[index_cell]
+        pred = predictions[i]
+        cell_list[cell.frame_number].append((cell,pred))
+    n_pred = np.max(predictions)+1
+    for frame_nr,cells in enumerate(cell_list):
+        print "processing frame nr",frame_nr+1
+        frame = m.open_frame(path,frame_nr+1)
+        body = m.open_frame(experiment.body_path,frame_nr+1)
+        arm = m.open_frame(experiment.arm_path,frame_nr+1)
+        mask = np.zeros((frame.shape[0],frame.shape[1],n_pred),dtype=np.uint8)
+        out = np.zeros((frame.shape[0],frame.shape[1],3),dtype=np.uint8)
+        for cell,pred in cells:
+            
+            mask[:,:,pred] += (body==cell.body+1).astype(np.uint8)
+            for elt in cell.arms:
+                mask[:,:,pred]+=(arm==elt+1).astype(np.uint8)
+        mask*=255
+        for i in range(n_pred):
+            out+= m.cv_overlay_mask2image(mask[:,:,i],frame,color=colors[i])/n_pred
+        cv2.imwrite(os.path.join(path,str(frame_nr+1)+".png"),out)
+        
+        
+class Cell_Classifier(object):
+    """Class containing a reference to the dataset used for calssification,
+    the k-means classifier"""
+    def __init__(self,path_list,path = ".",name='cell-classifier'):
+        self.path=path
+        self.path_list = path_list
+        self.classifier = None
+        self.predictions = None
+        self.name = name
+        self.trajectories = []
+        for path in self.path_list:
+            tuple_traj = loadObject(os.path.join(path,"traj_selection.pkl"))
+            self.trajectories.append( tuple_traj )
+        
+        
+    def process(self):
+        self.predictions, self.classifier = w_classification(self.path_list)
+        
+    def save(self):
+        with open(os.path.join(self.path,self.name),'wb') as out:
+            pickle.dump(self.__dict__,out)
+
+    def load(self):
+        print "loading trois petits points"
+        with open(os.path.join(self.path,self.name),'rb') as dataPickle:
+            self.__dict__ = pickle.load(dataPickle)
+            
+    def show_random_images(self):
+        n_exp = int(random.random()*len(self.path_list))
+        path_exp = self.path_list[n_exp]
+        experiment = Experiment(path_exp)
+        experiment.load()
+        beg_index = 0
+        for i in range(n_exp):
+            beg_index+=sum([len(x[1].cells) for x in self.trajectories[i]])
+        end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[n_exp]])
+        predictions = self.predictions[beg_index:end_index]
+        trajectories = self.trajectories[n_exp]
+        correspondances = correspondance_vector(trajectories)
+        out = show_multiple_on_scale(experiment,trajectories,correspondances,predictions)
+        m.si(out)
+        
+    def plot_evolution(self):
+        
+        for i in range(len(self.path_list)):
+            experiment = Experiment(self.path_list[i])
+            experiment.load()
+            beg_index = 0
+            for j in range(i):
+                beg_index+=sum([len(x[1].cells) for x in self.trajectories[j]])
+            end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[i]])
+            predictions = self.predictions[beg_index:end_index]
+            trajectories = self.trajectories[i]
+            correspondances = correspondance_vector(trajectories)
+            vt = (experiment,trajectories,predictions,correspondances)
+            plot_clf_vector(vt)
+            plt.title(self.path_list[i])
+            plt.show()
+            frac = get_fractions(vt)
+            plt.figure()
+            plt.bar([0,1,2],frac)
+            plt.title("histogram of trajectories in path:\n"+self.path_list[i])
+            plt.xlabel('class')
+            plt.ylabel('fractions')
+            
+    def write_entire_movie(self):
+        for i in range(len(self.path_list)):
+            experiment = Experiment(self.path_list[i])
+            experiment.load()
+            beg_index = 0
+            for j in range(i):
+                beg_index+=sum([len(x[1].cells) for x in self.trajectories[j]])
+            end_index = beg_index+sum([len(x[1].cells) for x in self.trajectories[i]])
+            predictions = self.predictions[beg_index:end_index]
+            name=experiment.path+"_all_classified"
+            trajectories = self.trajectories[i]
+            correspondances = correspondance_vector(trajectories)
+            write_movie(experiment,name,trajectories,predictions,correspondances)

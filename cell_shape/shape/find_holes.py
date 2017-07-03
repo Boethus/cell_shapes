@@ -165,10 +165,10 @@ def findHoles(image):
     within a gaussian"""
     local_minima=find_local_minima(image)
     mask_gaussians=m.where_are_gaussians(image)
-    im_holes=m.show_holes_on_img(np.logical_and(local_minima,~mask_gaussians),image_normal)
-    local_minima = np.logical_and(local_minima,~mask_gaussians)
-    local_minima = local_minima.astype(np.uint8)
-    return lab,im_holes
+    im_holes=m.show_holes_on_img(np.logical_and(local_minima,~mask_gaussians),image)
+    return im_holes
+im=open_frame(80)
+findHoles(im)
 
 def classifyPhaseImage():
     phase_path = os.path.join("..",'data','microglia','Beacon-1 unst',"Scene1Interval"+str(fr_nb)+"_PHASE.png")
@@ -228,8 +228,9 @@ def processFrame(fr_nb):
     filtered_size = skimage.morphology.remove_small_objects(lab,60)   #Only temporary, to track only the biggest
     out = m.cv_overlay_mask2image(filtered_size,img)
     return out
-
+"""
 savepath=os.path.join("..","data","microglia","cell_arms_2")
 for i in range(31,241):
     print "processing frame"+str(i)
     cv2.imwrite(os.path.join(savepath,str(i)+".png"),processFrame(i))
+"""
